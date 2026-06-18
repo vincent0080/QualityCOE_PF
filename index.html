@@ -712,6 +712,16 @@ function switchAuthTab(tab) {
   document.getElementById('auth-error').style.display = 'none';
 }
 
+// 帳號名 → email 快取（登入後寫入，未登入時用）
+function cacheNameEmail(name, email) {
+  const c = JSON.parse(localStorage.getItem('pf_name_cache')||'{}');
+  c[name] = email;
+  localStorage.setItem('pf_name_cache', JSON.stringify(c));
+}
+function getCachedEmail(name) {
+  return JSON.parse(localStorage.getItem('pf_name_cache')||'{}')[name] || null;
+}
+
 async function login() {
   const nameInput = document.getElementById('login-name').value.trim();
   const pass = document.getElementById('login-password').value;
@@ -727,9 +737,21 @@ async function login() {
       if (!cred) throw { code: 'auth/user-not-found' };
       email = cred.email;
     } else {
-      const snap = await db.collection('users').where('name', '==', nameInput).limit(1).get();
-      if (snap.empty) throw { code: 'auth/user-not-found' };
-      email = snap.docs[0].data().email;
+      // 先查本地快取（未登入時 Firestore 可能被規則擋住）
+      email = getCachedEmail(nameInput);
+      if (!email) {
+        try {
+          const snap = await db.collection('users').where('name','==',nameInput).limit(1).get();
+          if (snap.empty) throw { code: 'auth/user-not-found' };
+          email = snap.docs[0].data().email;
+          cacheNameEmail(nameInput, email);
+        } catch(e) {
+          if (e.code) throw e;
+          // Firestore 權限錯誤（未登入被擋）→ 提示更新規則
+          showAuthError('查詢帳號失敗：請確認已更新 Firestore 安全規則（允許 users 公開讀取）');
+          return;
+        }
+      }
     }
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
@@ -837,13 +859,15 @@ async function loadUserProfile() {
   if (doc.exists) {
     S.profile = { uid: S.user.uid, ...doc.data() };
   } else {
-    // profile doc 不存在時，用 displayName 或 email 前綴當名字
     const fallbackName = S.user.displayName || S.user.email.split('@')[0];
     S.profile = { uid: S.user.uid, name: fallbackName, email: S.user.email, role: 'member' };
-    // 順便補存 profile
     await db.collection('users').doc(S.user.uid).set(S.profile).catch(()=>{});
   }
-  S.users[S.user.uid] = S.profile; // 一定快取，讓指派下拉選單能找到自己
+  S.users[S.user.uid] = S.profile;
+  // 登入成功後把帳號名→email 存入快取，下次登出後仍可查詢
+  if (S.profile.name && S.user.email) {
+    cacheNameEmail(S.profile.name, S.user.email);
+  }
 }
 
 function initApp() {
@@ -1700,21 +1724,34 @@ async function adminCreateMember() {
   if (!name||!email||!pass) { toast('請填寫所有欄位','error'); return; }
   if (pass.length < 6) { toast('密碼至少 6 位','error'); return; }
 
-  // 儲存目前登入狀態，建完帳號後恢復
-  const savedUser = S.user;
   try {
-    const cred = await auth.createUserWithEmailAndPassword(email, pass);
-    await db.collection('users').doc(cred.user.uid).set({
-      name, email, role, createdAt: FV.serverTimestamp()
-    });
-    // 如果不是 demo mode，建完帳號會被自動登入，需登出再讓原本 admin 重新登入
-    if (!DEMO_MODE) {
-      await auth.signOut();
-      toast(`帳號已建立：${email}（請重新登入）`, 'success');
+    if (DEMO_MODE) {
+      // Demo 模式：直接寫入 localStorage，完全不觸發 auth 狀態變更
+      const creds = JSON.parse(localStorage.getItem('pf_credentials')||'{}');
+      if (Object.values(creds).find(u=>u.email===email)) { toast('此 Email 已被使用','error'); return; }
+      const uid = 'u_' + Math.random().toString(36).slice(2);
+      creds[uid] = { email, _pw: pass };
+      localStorage.setItem('pf_credentials', JSON.stringify(creds));
+      await db.collection('users').doc(uid).set({ name, email, role, createdAt: FV.serverTimestamp() });
+      S.users[uid] = { uid, name, email, role };
     } else {
-      toast(`帳號已建立：${email}`, 'success');
+      // Firebase 模式：使用第二個 App 實例，不影響目前的管理員 session
+      const tmpApp = firebase.initializeApp(firebaseConfig, 'tmp_' + Date.now());
+      const tmpAuth = tmpApp.auth();
+      try {
+        const cred = await tmpAuth.createUserWithEmailAndPassword(email, pass);
+        await db.collection('users').doc(cred.user.uid).set({
+          name, email, role, createdAt: FV.serverTimestamp()
+        });
+        // 把 name→email 存入登入快取
+        cacheNameEmail(name, email);
+      } finally {
+        await tmpAuth.signOut().catch(()=>{});
+        await tmpApp.delete().catch(()=>{});
+      }
     }
     closeModal('modal-invite-admin');
+    toast(`帳號已建立：${name}`, 'success');
     renderAdmin();
   } catch(e) {
     toast(translateAuthError(e.code), 'error');
