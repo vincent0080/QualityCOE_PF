@@ -579,7 +579,8 @@ if (DEMO_MODE) {
       localStorage.setItem('pf_users',JSON.stringify(users));
       _cu={uid,email};
       localStorage.setItem('pf_auth',JSON.stringify(_cu));
-      _acbs.forEach(cb=>cb(_cu));
+      // 延遲觸發，讓 register() 有時間先存完 profile doc
+      setTimeout(()=>_acbs.forEach(cb=>cb(_cu)), 0);
       return {user:_cu};
     },
     async signOut(){
