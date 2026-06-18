@@ -1934,7 +1934,11 @@ function initials(name) {
   if (parts.length>=2) return (parts[0][0]+parts[1][0]).toUpperCase();
   return name.substring(0,2).toUpperCase();
 }
-const AVATAR_COLORS = ['#0052cc','#36b37e','#ff5630','#6554c0','#ff8b00','#00b8d9','#57d9a3','#ff991f'];
+const AVATAR_COLORS = [
+  '#e53935','#8e24aa','#3949ab','#039be5','#00897b',
+  '#43a047','#f4511e','#6d4c41','#00acc1','#7cb342',
+  '#fb8c00','#1e88e5','#d81b60','#5e35b1','#546e7a'
+];
 function avatarColor(name) {
   if (!name) return AVATAR_COLORS[0];
   let h=0; for(let c of name) h=(h*31+c.charCodeAt(0))&0xffffffff;
