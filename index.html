@@ -154,6 +154,9 @@ body[data-theme="dark"] .project-card{background:#161b22}
 .board-col-items{padding:0 8px 8px;flex:1;overflow-y:auto;min-height:60px}
 .board-card{background:#fff;border-radius:6px;padding:12px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow);transition:.15s;border-left:3px solid transparent}
 .board-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.15);transform:translateY(-1px)}
+@keyframes overdueFlash{0%,100%{box-shadow:0 0 0 2px #de350b,var(--shadow)}50%{box-shadow:var(--shadow)}}
+.card-overdue{animation:overdueFlash 1.2s ease-in-out infinite}
+.row-overdue td{background:#fff0f0 !important}
 .board-card-key{font-size:11px;color:#6b778c;margin-bottom:5px;display:flex;align-items:center;gap:5px}
 .board-card-title{font-size:13.5px;color:#172b4d;line-height:1.4;margin-bottom:10px}
 .board-card-footer{display:flex;align-items:center;justify-content:space-between}
@@ -495,6 +498,16 @@ table.list-table{font-size:17px}
         <div class="form-group">
           <label>截止日期</label>
           <input type="date" id="item-due">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label>進度（%）</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="number" id="item-progress" min="0" max="100" value="0" style="width:80px;padding:8px 10px;border:2px solid #dfe1e6;border-radius:4px;font-size:14px" oninput="(function(v){var b=document.getElementById('item-progress-bar');if(b){var p=Math.min(100,Math.max(0,parseInt(v)||0));b.style.width=p+'%';b.style.background=p>=100?'#36b37e':p>=70?'#4c9aff':p>=30?'#ff8b00':'#de350b'}})(this.value)">
+            <span style="color:#6b778c">%</span>
+            <div style="flex:1;height:8px;background:#ebecf0;border-radius:4px;overflow:hidden">
+              <div id="item-progress-bar" style="height:100%;width:0%;background:#4c9aff;border-radius:4px;transition:.2s"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1133,7 +1146,7 @@ function renderMyWork() {
   const rows = (pItems) => pItems
     .sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9))
     .map(i=>`<tr onclick="openItemPanel('${i.id}')" style="${i.status==='done'?'opacity:.55':''}">
-      <td>${typeIcon(i.type)}</td>
+      <td>${typeCell(i.type)}</td>
       <td style="color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
       <td>${esc(i.title)}</td>
       <td>${statusBadge(i.status)}</td>
@@ -1223,7 +1236,7 @@ function renderHome() {
         <th>類型</th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
       </tr></thead><tbody>
         ${myItems.map(i=>`<tr onclick="openItemPanel('${i.id}')">
-          <td>${typeIcon(i.type)}</td>
+          <td>${typeCell(i.type)}</td>
           <td style="color:#0052cc;font-weight:500">${esc(i.key)}</td>
           <td>${esc(i.title)}</td>
           <td>${statusBadge(i.status)}</td>
@@ -1344,9 +1357,24 @@ function renderBoard() {
   }</div>`;
 }
 
+function isOverdue(item) {
+  if (!item.dueDate || item.status === 'done') return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return new Date(item.dueDate + 'T00:00:00') < today;
+}
+
+function progressColor(pct) {
+  if (pct >= 100) return '#36b37e';
+  if (pct >= 70)  return '#4c9aff';
+  if (pct >= 30)  return '#ff8b00';
+  return '#de350b';
+}
+
 function boardCard(item) {
   const assignee = S.users[item.assignee];
-  return `<div class="board-card" draggable="true" data-id="${item.id}" ondragstart="dragItem(event,'${item.id}')" onclick="openItemPanel('${item.id}')" style="border-left-color:${priorityColor(item.priority)}">
+  const pct = Math.min(100, Math.max(0, item.progress || 0));
+  const overdue = isOverdue(item);
+  return `<div class="board-card${overdue?' card-overdue':''}" draggable="true" data-id="${item.id}" ondragstart="dragItem(event,'${item.id}')" onclick="openItemPanel('${item.id}')" style="border-left-color:${priorityColor(item.priority)}">
     <div class="board-card-key">${typeIcon(item.type)} <span style="color:#0052cc">${esc(item.key)}</span></div>
     <div class="board-card-title">${esc(item.title)}</div>
     <div class="board-card-footer">
@@ -1355,6 +1383,12 @@ function boardCard(item) {
         ${item.dueDate?`<span style="font-size:11px;color:${dueDateColor(item.dueDate)}">${formatDate(item.dueDate)}</span>`:''}
         ${assignee?`<div class="user-avatar" style="width:22px;height:22px;font-size:10px;background:${avatarColor(assignee.name)}" title="${esc(assignee.name)}">${initials(assignee.name)}</div>`:''}
       </div>
+    </div>
+    <div style="margin-top:8px">
+      <div style="height:4px;background:#ebecf0;border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${progressColor(pct)};border-radius:2px;transition:.3s"></div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:${progressColor(pct)};font-weight:600;margin-top:2px">${pct}%</div>
     </div>
   </div>`;
 }
@@ -1365,7 +1399,9 @@ async function dropItem(ev, newStatus) {
   ev.preventDefault();
   document.querySelectorAll('.board-col').forEach(c=>c.classList.remove('drag-over'));
   if (!draggedId) return;
-  await db.collection('items').doc(draggedId).update({ status: newStatus, updatedAt: FV.serverTimestamp() });
+  const updates = { status: newStatus, updatedAt: FV.serverTimestamp() };
+  if (newStatus === 'done') updates.progress = 100;
+  await db.collection('items').doc(draggedId).update(updates);
   draggedId = null;
 }
 
@@ -1401,28 +1437,41 @@ function renderList() {
       </div>
       <table class="list-table">
         <thead><tr>
-          <th style="width:36px">類型</th>
+          <th>類型</th>
           ${th('key','代號')}
           ${th('title','標題')}
           ${th('status','狀態')}
           ${th('priority','優先度')}
+          ${th('progress','進度')}
           <th>指派</th>
           ${th('dueDate','截止')}
           ${th('createdAt','建立')}
           <th>回報者</th>
         </tr></thead>
         <tbody>
-          ${sorted.map(i=>`<tr onclick="openItemPanel('${i.id}')">
-            <td>${typeIcon(i.type)}</td>
+          ${sorted.map(i=>{
+            const pct = Math.min(100,Math.max(0,i.progress||0));
+            const pc = progressColor(pct);
+            const overdue = isOverdue(i);
+            return `<tr onclick="openItemPanel('${i.id}')" class="${overdue?'row-overdue':''}">
+            <td>${typeCell(i.type)}</td>
             <td style="color:#0052cc;font-weight:500;white-space:nowrap">${esc(i.key)}</td>
             <td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.title)}</td>
             <td>${statusBadge(i.status)}</td>
             <td>${priorityBadge(i.priority)}</td>
+            <td style="min-width:110px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="flex:1;height:5px;background:#ebecf0;border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:${pc};border-radius:3px"></div>
+                </div>
+                <span style="font-size:12px;color:${pc};font-weight:600;white-space:nowrap">${pct}%</span>
+              </div>
+            </td>
             <td>${userChip(i.assignee)}</td>
             <td style="white-space:nowrap;color:${dueDateColor(i.dueDate)}">${formatDate(i.dueDate)||'—'}</td>
             <td style="white-space:nowrap;color:#6b778c;font-size:12px">${formatTs(i.createdAt)}</td>
             <td>${userChip(i.reporter)}</td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table>
       ${!S.items.length?'<div class="empty-state"><p>此專案尚無任務，點擊右上角「+ 建立」開始新增</p></div>':''}
@@ -1472,6 +1521,12 @@ async function renderPanel() {
 
   const proj = S.projects.find(p=>p.id===item.projectId) || { name:'', key:'' };
   const projectUsers = await getProjectUsersOptions(item.projectId);
+
+  // load reporter profile if not already cached
+  if (item.reporter && !S.users[item.reporter]) {
+    const rDoc = await db.collection('users').doc(item.reporter).get();
+    if (rDoc.exists) S.users[item.reporter] = { uid: item.reporter, ...rDoc.data() };
+  }
 
   // load comments
   const commSnap = await db.collection('comments').where('itemId','==',item.id).get();
@@ -1551,6 +1606,19 @@ async function renderPanel() {
           <div class="meta-label">更新時間</div>
           <div class="meta-value" style="font-size:12px;color:#6b778c">${formatTs(item.updatedAt)}</div>
         </div>
+        <div class="meta-item" style="grid-column:1/-1">
+          <div class="meta-label">進度</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+            <input type="number" id="panel-progress" class="meta-select" style="width:72px;text-align:center" min="0" max="100"
+              value="${item.progress||0}"
+              onchange="savePanelField('progress',this.value)">
+            <span style="color:var(--txt2)">%</span>
+            <div style="flex:1;height:10px;background:#ebecf0;border-radius:5px;overflow:hidden">
+              <div style="height:100%;width:${item.progress||0}%;background:${progressColor(item.progress||0)};border-radius:5px;transition:.3s"></div>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:${progressColor(item.progress||0)};min-width:38px;text-align:right">${item.progress||0}%</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1622,11 +1690,15 @@ function cancelDesc() {
 
 async function savePanelField(field, value) {
   if (!S.panelItem) return;
-  await db.collection('items').doc(S.panelItem.id).update({
-    [field]: value,
-    updatedAt: FV.serverTimestamp()
-  });
+  if (field === 'progress') value = Math.min(100, Math.max(0, parseInt(value)||0));
+  const updates = { [field]: value, updatedAt: FV.serverTimestamp() };
+  if (field === 'status' && value === 'done') {
+    updates.progress = 100;
+    S.panelItem.progress = 100;
+  }
+  await db.collection('items').doc(S.panelItem.id).update(updates);
   S.panelItem[field] = value;
+  renderPanel();
   toast('已更新', 'success');
 }
 
@@ -1684,7 +1756,7 @@ async function saveItem() {
   await db.runTransaction(async tx => {
     const projDoc = await tx.get(projRef);
     const counter = (projDoc.data().counter||0) + 1;
-    itemKey = `${S.currentProject.key}-${counter}`;
+    itemKey = `${S.currentProject.key}-${String(counter).padStart(3,'0')}`;
     tx.update(projRef, { counter });
     tx.set(db.collection('items').doc(), {
       projectId: S.currentProject.id,
@@ -1697,6 +1769,7 @@ async function saveItem() {
       assignee: document.getElementById('item-assignee').value,
       reporter: S.user.uid,
       dueDate: document.getElementById('item-due').value,
+      progress: Math.min(100, Math.max(0, parseInt(document.getElementById('item-progress').value)||0)),
       links: [],
       createdAt: FV.serverTimestamp(),
       updatedAt: FV.serverTimestamp()
@@ -2190,6 +2263,10 @@ function typeIcon(type) {
   const map = { task:'T', bug:'B', feature:'F', issue:'!' };
   return `<span class="type-icon type-${type||'task'}">${map[type]||'T'}</span>`;
 }
+function typeCell(type) {
+  const lbl = { task:'任務', bug:'錯誤', feature:'功能', issue:'問題' };
+  return `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${typeIcon(type)}<span>${lbl[type]||type}</span></span>`;
+}
 function typeLabel(type) {
   return { task:'任務 Task', bug:'錯誤 Bug', feature:'功能 Feature', issue:'問題 Issue' }[type]||type;
 }
@@ -2200,7 +2277,7 @@ function statusBadge(s) {
 }
 function priorityBadge(p) {
   const map={highest:'badge-highest',high:'badge-high',medium:'badge-medium',low:'badge-low',lowest:'badge-lowest'};
-  const lbl={highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'};
+  const lbl={highest:'↑↑ 最高',high:'↑ 高',medium:'— 中',low:'↓ 低',lowest:'↓↓ 最低'};
   return `<span class="badge ${map[p]||'badge-medium'}">${lbl[p]||p}</span>`;
 }
 function priorityLabel(p) {
