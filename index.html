@@ -306,14 +306,15 @@ select option{color:#172b4d}
   <div class="panel-body" id="panel-body"></div>
 </div>
 
-<!-- ===== CREATE PROJECT MODAL ===== -->
+<!-- ===== CREATE / EDIT PROJECT MODAL ===== -->
 <div class="modal-overlay" id="modal-project">
   <div class="modal">
     <div class="modal-header">
-      <h3>建立專案</h3>
+      <h3 id="modal-project-title">建立專案</h3>
       <button class="close-btn" onclick="closeModal('modal-project')">×</button>
     </div>
     <div class="modal-body">
+      <input type="hidden" id="proj-edit-id">
       <div class="form-group"><label>專案名稱</label><input type="text" id="proj-name" placeholder="例：前端重構專案"></div>
       <div class="form-group"><label>專案代號（英文縮寫）</label><input type="text" id="proj-key" placeholder="例：FE" maxlength="6" style="text-transform:uppercase"></div>
       <div class="form-group"><label>說明</label><textarea id="proj-desc" rows="3" placeholder="專案描述…"></textarea></div>
@@ -331,7 +332,7 @@ select option{color:#172b4d}
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-project')">取消</button>
-      <button class="btn btn-primary" onclick="createProject()">建立</button>
+      <button class="btn btn-primary" id="proj-submit-btn" onclick="saveProject()">建立</button>
     </div>
   </div>
 </div>
@@ -704,10 +705,14 @@ async function loadUserProfile() {
   const doc = await db.collection('users').doc(S.user.uid).get();
   if (doc.exists) {
     S.profile = { uid: S.user.uid, ...doc.data() };
-    S.users[S.user.uid] = S.profile;
   } else {
-    S.profile = { uid: S.user.uid, name: S.user.email, email: S.user.email, role: 'member' };
+    // profile doc 不存在時，用 displayName 或 email 前綴當名字
+    const fallbackName = S.user.displayName || S.user.email.split('@')[0];
+    S.profile = { uid: S.user.uid, name: fallbackName, email: S.user.email, role: 'member' };
+    // 順便補存 profile
+    await db.collection('users').doc(S.user.uid).set(S.profile).catch(()=>{});
   }
+  S.users[S.user.uid] = S.profile; // 一定快取，讓指派下拉選單能找到自己
 }
 
 function initApp() {
@@ -784,19 +789,26 @@ function renderHome() {
   const recentProjects = S.projects.slice(0,6);
 
   document.getElementById('content').innerHTML = `
-    <div class="section-header"><h2>我的專案</h2><button class="btn btn-primary btn-sm" onclick="openModal('modal-project')">+ 新增專案</button></div>
+    <div class="section-header"><h2>我的專案</h2><button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button></div>
     <div class="home-grid">
       ${recentProjects.map(p=>`
-        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}" onclick="showView('project','${p.id}')">
-          <h3>${esc(p.name)}</h3>
-          <p>${esc(p.description||'')}</p>
-          <div class="project-stats">
+        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+            <h3 style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.name)}</h3>
+            ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
+            </div>`:''}
+          </div>
+          <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
+          <div class="project-stats" style="cursor:pointer" onclick="showView('project','${p.id}')">
             <div class="stat"><div class="stat-num">${countStatus(p.id,'todo')}</div><div class="stat-lbl">待處理</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'in_progress')}</div><div class="stat-lbl">進行中</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'done')}</div><div class="stat-lbl">完成</div></div>
           </div>
         </div>`).join('')}
-      <div class="project-card" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openModal('modal-project')">
+      <div class="project-card" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openCreateProjectModal()">
         <div style="text-align:center;color:#6b778c"><div style="font-size:28px">+</div><div style="font-size:13px;margin-top:4px">建立新專案</div></div>
       </div>
     </div>
@@ -830,14 +842,21 @@ function renderProjectsList() {
   document.getElementById('content').innerHTML = `
     <div class="section-header">
       <h2>所有專案（${S.projects.length}）</h2>
-      <button class="btn btn-primary btn-sm" onclick="openModal('modal-project')">+ 新增專案</button>
+      <button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button>
     </div>
     <div class="home-grid">
       ${S.projects.map(p=>`
-        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}" onclick="showView('project','${p.id}')">
-          <h3>${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
-          <p>${esc(p.description||'')}</p>
-          <div style="font-size:12px;color:#6b778c">成員：${(p.members||[]).length} 人</div>
+        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+            <h3 style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
+            ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
+            </div>`:''}
+          </div>
+          <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
+          <div style="font-size:12px;color:#6b778c;cursor:pointer" onclick="showView('project','${p.id}')">成員：${(p.members||[]).length} 人</div>
         </div>`).join('')}
     </div>`;
   document.getElementById('content').dataset.view='projects';
@@ -875,6 +894,8 @@ function renderProjectTopbar() {
     </div>
     <button class="btn btn-primary btn-sm" onclick="openCreateItemModal()">+ 建立</button>
     ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openModal('modal-invite')">邀請成員</button>`:''}
+    ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEditProject('${p.id}')">✏️ 編輯</button>`:''}
+    ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 刪除</button>`:''}
     <button class="btn btn-secondary btn-sm" onclick="showView('projects')">← 返回</button>`
   );
 }
@@ -1340,27 +1361,74 @@ async function removeLink(itemId, targetId) {
 // =============================================
 // PROJECTS CRUD
 // =============================================
-async function createProject() {
+function openEditProject(projectId) {
+  const p = S.projects.find(pr=>pr.id===projectId);
+  if (!p) return;
+  document.getElementById('modal-project-title').textContent = '編輯專案';
+  document.getElementById('proj-submit-btn').textContent = '儲存';
+  document.getElementById('proj-edit-id').value = projectId;
+  document.getElementById('proj-name').value = p.name;
+  document.getElementById('proj-key').value = p.key;
+  document.getElementById('proj-desc').value = p.description || '';
+  document.getElementById('proj-color').value = p.color || '#0052cc';
+  openCreateProjectModal();
+}
+
+function openCreateProjectModal() {
+  document.getElementById('modal-project-title').textContent = '建立專案';
+  document.getElementById('proj-submit-btn').textContent = '建立';
+  document.getElementById('proj-edit-id').value = '';
+  document.getElementById('proj-name').value = '';
+  document.getElementById('proj-key').value = '';
+  document.getElementById('proj-desc').value = '';
+  document.getElementById('proj-color').value = '#0052cc';
+  openCreateProjectModal();
+}
+
+async function saveProject() {
   const name  = document.getElementById('proj-name').value.trim();
   const key   = document.getElementById('proj-key').value.trim().toUpperCase();
   const desc  = document.getElementById('proj-desc').value.trim();
   const color = document.getElementById('proj-color').value;
+  const editId = document.getElementById('proj-edit-id').value;
   if (!name||!key) { toast('請填寫名稱與代號', 'error'); return; }
   if (!/^[A-Z0-9]{1,6}$/.test(key)) { toast('代號限 1-6 個英數字元', 'error'); return; }
 
-  const ref = await db.collection('projects').add({
-    name, key, description:desc, color,
-    members: [S.user.uid],
-    createdBy: S.user.uid,
-    counter: 0,
-    createdAt: FV.serverTimestamp()
-  });
-  closeModal('modal-project');
-  document.getElementById('proj-name').value='';
-  document.getElementById('proj-key').value='';
-  document.getElementById('proj-desc').value='';
-  toast(`專案 ${key} 已建立`, 'success');
-  showView('project', ref.id);
+  if (editId) {
+    // 編輯模式
+    await db.collection('projects').doc(editId).update({ name, description:desc, color });
+    closeModal('modal-project');
+    toast('專案已更新', 'success');
+    if (S.currentProject?.id === editId) renderProjectTopbar();
+  } else {
+    // 新增模式
+    const ref = await db.collection('projects').add({
+      name, key, description:desc, color,
+      members: [S.user.uid],
+      createdBy: S.user.uid,
+      counter: 0,
+      createdAt: FV.serverTimestamp()
+    });
+    closeModal('modal-project');
+    toast(`專案 ${key} 已建立`, 'success');
+    showView('project', ref.id);
+  }
+}
+
+async function deleteProject(projectId) {
+  const p = S.projects.find(pr=>pr.id===projectId);
+  if (!p) return;
+  if (!confirm(`確定要刪除專案「${p.name}」？\n此操作無法復原，專案內所有任務也會一併刪除。`)) return;
+
+  // 刪除所有 items
+  const itemsSnap = await db.collection('items').where('projectId','==',projectId).get();
+  const batch = [];
+  itemsSnap.docs.forEach(d => batch.push(db.collection('items').doc(d.id).delete()));
+  await Promise.all(batch);
+
+  await db.collection('projects').doc(projectId).delete();
+  toast('專案已刪除', 'success');
+  if (S.currentProject?.id === projectId) showView('projects');
 }
 
 // =============================================
