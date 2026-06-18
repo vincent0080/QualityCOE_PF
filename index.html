@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quality COE Project Flow</title>
+<script>!function(){var t=localStorage.getItem('pf_theme');if(t)document.documentElement.setAttribute('data-theme',t)}()</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -19,6 +20,71 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   --done-txt:#006644;--prog-txt:#0052cc;--test-txt:#974f0c;
   --r4:4px;--r6:6px;--shadow:0 1px 4px rgba(0,0,0,.15)
 }
+/* ===== DARK MODE ===== */
+[data-theme="dark"]{
+  --bg:#0d1117;--white:#161b22;--border:#30363d;
+  --txt:#c9d1d9;--txt2:#8b949e;
+  --sidebar:#010409;--sidebar-hover:#1c2128;--sidebar-active:#21262d;--sidebar-text:#8b949e;
+  --accent:#79c0ff;--accent-h:#a5d6ff;--accent-light:#1f3a5f;
+  --todo:#21262d;--prog:#1f3a5f;--test:#3d2f00;--done:#1a3a2a;
+  --done-txt:#56d364;--prog-txt:#79c0ff;--test-txt:#d29922;
+  --shadow:0 1px 4px rgba(0,0,0,.5);
+}
+body[data-theme="dark"]{background:var(--bg);color:var(--txt)}
+body[data-theme="dark"] #topbar{background:#161b22;border-color:var(--border)}
+body[data-theme="dark"] .topbar-title{color:var(--txt)}
+body[data-theme="dark"] #theme-btn{border-color:var(--border);color:var(--txt2)}
+body[data-theme="dark"] #theme-btn:hover{background:#21262d;color:var(--txt)}
+body[data-theme="dark"] .view-tabs{background:#0d1117}
+body[data-theme="dark"] .view-tab{color:#8b949e}
+body[data-theme="dark"] .view-tab.active{background:#21262d;color:var(--txt)}
+body[data-theme="dark"] .search-box{background:#21262d;border-color:var(--border)}
+body[data-theme="dark"] .search-box input{color:var(--txt)}
+body[data-theme="dark"] .board-col{background:#21262d}
+body[data-theme="dark"] .board-col-title{color:#8b949e}
+body[data-theme="dark"] .board-col-count{background:#30363d;color:#8b949e}
+body[data-theme="dark"] .board-card{background:#161b22}
+body[data-theme="dark"] .board-card-title{color:var(--txt)}
+body[data-theme="dark"] .board-card-key{color:var(--txt2)}
+body[data-theme="dark"] .add-card-btn{color:#8b949e}
+body[data-theme="dark"] .add-card-btn:hover{background:#30363d;color:var(--txt)}
+body[data-theme="dark"] .list-wrap{background:#161b22}
+body[data-theme="dark"] .list-table th{background:#21262d;color:#8b949e;border-color:var(--border)}
+body[data-theme="dark"] .list-table td{border-color:var(--border);color:var(--txt)}
+body[data-theme="dark"] .list-table tr:hover td{background:#1c2128}
+body[data-theme="dark"] .list-toolbar{border-color:var(--border)}
+body[data-theme="dark"] #item-panel{background:#161b22}
+body[data-theme="dark"] .panel-header{border-color:var(--border)}
+body[data-theme="dark"] .panel-footer{border-color:var(--border)}
+body[data-theme="dark"] .panel-section-title{color:#8b949e}
+body[data-theme="dark"] .panel-key{color:#8b949e}
+body[data-theme="dark"] .panel-title-input{color:var(--txt);background:transparent}
+body[data-theme="dark"] .panel-title-input:hover,body[data-theme="dark"] .panel-title-input:focus{background:#0d1117}
+body[data-theme="dark"] .panel-desc{color:var(--txt)}
+body[data-theme="dark"] .panel-desc:hover{background:#0d1117;border-color:var(--border)}
+body[data-theme="dark"] .meta-label{color:#8b949e}
+body[data-theme="dark"] .meta-value{color:var(--txt)}
+body[data-theme="dark"] .meta-select{color:var(--txt);background:transparent}
+body[data-theme="dark"] .meta-select:hover{background:#0d1117;border-color:var(--border)}
+body[data-theme="dark"] .meta-select:focus{background:#161b22;border-color:#79c0ff}
+body[data-theme="dark"] .link-item{background:#21262d}
+body[data-theme="dark"] .comment-content{background:#21262d}
+body[data-theme="dark"] .comment-author{color:var(--txt)}
+body[data-theme="dark"] .comment-text{color:var(--txt)}
+body[data-theme="dark"] .comment-input-wrap textarea{background:#0d1117;color:var(--txt);border-color:var(--border)}
+body[data-theme="dark"] .modal{background:#161b22}
+body[data-theme="dark"] .modal-header h3{color:var(--txt)}
+body[data-theme="dark"] .close-btn{color:#8b949e}
+body[data-theme="dark"] .form-group label{color:var(--txt)}
+body[data-theme="dark"] .form-group input,body[data-theme="dark"] .form-group select,body[data-theme="dark"] .form-group textarea{background:#0d1117;color:var(--txt);border-color:var(--border)}
+body[data-theme="dark"] .form-group input:focus,body[data-theme="dark"] .form-group select:focus,body[data-theme="dark"] .form-group textarea:focus{border-color:#79c0ff}
+body[data-theme="dark"] #link-search-results{background:#161b22;border-color:var(--border)}
+body[data-theme="dark"] #link-search-results div{color:var(--txt)}
+body[data-theme="dark"] #link-search-results div:hover{background:#21262d !important}
+body[data-theme="dark"] .btn-secondary{background:#21262d;color:var(--txt);border-color:var(--border)}
+body[data-theme="dark"] .btn-secondary:hover{background:#30363d}
+body[data-theme="dark"] .member-card{background:#21262d;border-color:var(--border)}
+body[data-theme="dark"] .project-card{background:#161b22}
 
 /* ===== AUTH ===== */
 #auth-screen{display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#1e2a3a 0%,#0052cc 100%)}
@@ -46,7 +112,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #app{display:flex;height:100vh;display:none}
 #sidebar{width:240px;background:var(--sidebar);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;gap:16px;flex-shrink:0}
 #content{flex:1;overflow-y:auto;padding:24px}
 
 /* ===== SIDEBAR ===== */
@@ -71,7 +137,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* ===== TOPBAR ===== */
 .topbar-title{font-size:16px;font-weight:600;color:#172b4d;display:flex;align-items:center;gap:8px}
-.topbar-actions{display:flex;align-items:center;gap:10px}
+.topbar-actions{display:flex;align-items:center;gap:10px;flex:1}
 .view-tabs{display:flex;gap:2px;background:#f4f5f7;border-radius:6px;padding:3px}
 .view-tab{padding:5px 14px;border-radius:4px;cursor:pointer;font-size:13px;color:#6b778c;transition:.15s}
 .view-tab.active{background:#fff;color:#172b4d;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.1)}
@@ -157,7 +223,7 @@ table.list-table{width:100%;border-collapse:collapse;font-size:13px}
 .comment-input-wrap textarea:focus{border-color:#0052cc;outline:none}
 
 /* ===== MODALS ===== */
-.modal-overlay{position:fixed;inset:0;background:rgba(9,30,66,.5);z-index:100;display:none;align-items:center;justify-content:center}
+.modal-overlay{position:fixed;inset:0;background:rgba(9,30,66,.5);z-index:300;display:none;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:8px;width:500px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(9,30,66,.25)}
 .modal-header{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between}
@@ -286,6 +352,10 @@ select option{color:#172b4d}
     <div id="topbar">
       <div class="topbar-title" id="topbar-title">首頁</div>
       <div class="topbar-actions" id="topbar-actions"></div>
+      <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+        <span id="topbar-clock" style="font-size:12px;color:var(--txt2);font-variant-numeric:tabular-nums;white-space:nowrap"></span>
+        <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:14px;padding:3px 11px;cursor:pointer;font-size:12px;color:var(--txt2);white-space:nowrap;transition:.15s">🌙 深色</button>
+      </div>
     </div>
     <div id="content"></div>
   </main>
@@ -697,6 +767,7 @@ let S = {
   allItems: [],       // for link search
   users: {},          // uid -> profile cache
   panelItem: null,    // item currently in side panel
+  linkTarget: null,   // selected item in link modal
   unsubs: [],         // firestore unsubscribers
   editingTitle: false,
   editingDesc: false,
@@ -893,6 +964,38 @@ function initApp() {
   renderSidebar();
   subscribeProjects();
   showView('home');
+  initTheme();
+  initClock();
+}
+
+function initClock() {
+  function tick() {
+    const now = new Date();
+    const d = now.toLocaleDateString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'});
+    const t = now.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    const el = document.getElementById('topbar-clock');
+    if (el) el.textContent = d + ' ' + t;
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('pf_theme') || 'light';
+  applyTheme(saved);
+}
+
+function toggleTheme() {
+  const current = document.body.getAttribute('data-theme') || 'light';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+  localStorage.setItem('pf_theme', document.body.getAttribute('data-theme'));
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.body.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️ 淺色' : '🌙 深色';
 }
 
 // =============================================
@@ -1478,6 +1581,7 @@ async function saveItem() {
 // LINKS
 // =============================================
 function openLinkModal() {
+  S.linkTarget = null;
   document.getElementById('link-search').value='';
   document.getElementById('link-target-id').value='';
   document.getElementById('link-selected').textContent='';
@@ -1493,23 +1597,26 @@ function searchLinkItems() {
     i.id !== S.panelItem?.id &&
     (i.key.toLowerCase().includes(q) || i.title.toLowerCase().includes(q))
   ).slice(0,10);
-  if (!matches.length) { results.innerHTML='<div style="padding:10px;color:#6b778c;font-size:13px">無結果</div>'; results.style.display='block'; return; }
+  if (!matches.length) { results.innerHTML='<div style="padding:10px;color:var(--txt2);font-size:13px">無結果</div>'; results.style.display='block'; return; }
   results.innerHTML = matches.map(i=>`
-    <div onclick="selectLinkTarget('${i.id}','${esc(i.key)}','${esc(i.title)}')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='#f4f5f7'" onmouseout="this.style.background=''">
-      ${typeIcon(i.type)} <span style="color:#0052cc;font-weight:500">${esc(i.key)}</span> ${esc(i.title)}
+    <div onclick="selectLinkTarget('${i.id}')" style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+      ${typeIcon(i.type)} <span style="color:var(--accent);font-weight:500">${esc(i.key)}</span> ${esc(i.title)}
     </div>`).join('');
   results.style.display='block';
 }
 
-function selectLinkTarget(id, key, title) {
-  document.getElementById('link-target-id').value=id;
-  document.getElementById('link-selected').innerHTML=`已選擇：<strong>${esc(key)}</strong> ${esc(title)}`;
+function selectLinkTarget(id) {
+  const item = S.allItems.find(i=>i.id===id);
+  if (!item) return;
+  S.linkTarget = item;
+  document.getElementById('link-target-id').value = id;
+  document.getElementById('link-selected').innerHTML=`已選擇：<strong>${esc(item.key)}</strong> ${esc(item.title)}`;
   document.getElementById('link-search-results').style.display='none';
-  document.getElementById('link-search').value=key+' '+title;
+  document.getElementById('link-search').value = item.key + ' ' + item.title;
 }
 
 async function addLink() {
-  const targetId = document.getElementById('link-target-id').value;
+  const targetId = S.linkTarget?.id || document.getElementById('link-target-id').value;
   const linkType = document.getElementById('link-type').value;
   if (!targetId || !S.panelItem) { toast('請先選擇要連結的任務', 'error'); return; }
 
