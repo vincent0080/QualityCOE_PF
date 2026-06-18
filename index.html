@@ -722,9 +722,9 @@ function initApp() {
 function subscribeProjects() {
   const unsub = db.collection('projects')
     .where('members', 'array-contains', S.user.uid)
-    .orderBy('createdAt', 'desc')
     .onSnapshot(snap => {
-      S.projects = snap.docs.map(d=>({id:d.id,...d.data()}));
+      S.projects = snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
       renderSidebarProjects();
       if (S.currentProject) {
         const updated = S.projects.find(p=>p.id===S.currentProject.id);
@@ -740,9 +740,9 @@ function subscribeProjectItems(projectId) {
   S.unsubs.filter(u=>u._isItemSub).forEach(u=>u());
   const unsub = db.collection('items')
     .where('projectId', '==', projectId)
-    .orderBy('createdAt', 'desc')
     .onSnapshot(snap => {
-      S.items = snap.docs.map(d=>({id:d.id,...d.data()}));
+      S.items = snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
       S.allItems = [...S.allItems.filter(i=>i.projectId!==projectId), ...S.items];
       renderProjectContent();
       if (S.panelItem) {
@@ -1049,7 +1049,8 @@ async function renderPanel() {
   const projectUsers = await getProjectUsersOptions(item.projectId);
 
   // load comments
-  const commSnap = await db.collection('comments').where('itemId','==',item.id).orderBy('createdAt','asc').get();
+  const commSnap = await db.collection('comments').where('itemId','==',item.id).get();
+  commSnap.docs.sort((a,b)=>((a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0)));
   const comments = commSnap.docs.map(d=>({id:d.id,...d.data()}));
 
   // load linked items
@@ -1401,7 +1402,7 @@ async function renderAdmin() {
     document.getElementById('content').innerHTML = '<div class="empty-state"><p>您沒有管理員權限</p></div>';
     return;
   }
-  const snap = await db.collection('users').orderBy('createdAt','desc').get();
+  const snap = await db.collection('users').get();
   const users = snap.docs.map(d=>({id:d.id,...d.data()}));
 
   document.getElementById('content').innerHTML = `
