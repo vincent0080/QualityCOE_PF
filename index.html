@@ -454,6 +454,80 @@ select option{color:#172b4d}
   </div>
 </div>
 
+<!-- ===== ADMIN: CREATE MEMBER MODAL ===== -->
+<div class="modal-overlay" id="modal-invite-admin">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <h3>新增成員帳號</h3>
+      <button class="close-btn" onclick="closeModal('modal-invite-admin')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>姓名</label><input type="text" id="new-member-name" placeholder="成員姓名"></div>
+      <div class="form-group"><label>電子郵件</label><input type="email" id="new-member-email" placeholder="member@email.com"></div>
+      <div class="form-group"><label>初始密碼</label><input type="text" id="new-member-pass" placeholder="至少 6 位"></div>
+      <div class="form-group">
+        <label>角色</label>
+        <select id="new-member-role">
+          <option value="member">成員</option>
+          <option value="admin">管理員</option>
+        </select>
+      </div>
+      <div class="hint">建立後成員可自行登入並修改密碼。</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-invite-admin')">取消</button>
+      <button class="btn btn-primary" onclick="adminCreateMember()">建立帳號</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EDIT MEMBER MODAL ===== -->
+<div class="modal-overlay" id="modal-edit-member">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <h3>編輯成員</h3>
+      <button class="close-btn" onclick="closeModal('modal-edit-member')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-member-uid">
+      <div class="form-group"><label>姓名</label><input type="text" id="edit-member-name" placeholder="成員姓名"></div>
+      <div class="form-group">
+        <label>角色</label>
+        <select id="edit-member-role">
+          <option value="member">成員</option>
+          <option value="admin">管理員</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-edit-member')">取消</button>
+      <button class="btn btn-primary" onclick="saveEditMember()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PROJECT MEMBERS MODAL ===== -->
+<div class="modal-overlay" id="modal-proj-members">
+  <div class="modal" style="width:500px">
+    <div class="modal-header">
+      <h3 id="proj-members-title">專案成員</h3>
+      <button class="close-btn" onclick="closeModal('modal-proj-members')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="proj-members-list"></div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">新增成員</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+        <input type="email" id="proj-invite-email" placeholder="成員 Email（需先完成註冊）" style="padding:8px 12px;border:2px solid var(--border);border-radius:4px;font-size:13px">
+        <button class="btn btn-primary" onclick="inviteToCurrentProject()">加入</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-proj-members')">關閉</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== TOAST ===== -->
 <div id="toast"></div>
 
@@ -687,19 +761,55 @@ function translateAuthError(code) {
 // =============================================
 // APP INIT
 // =============================================
-auth.onAuthStateChanged(async user => {
-  if (user) {
-    S.user = user;
-    await loadUserProfile();
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    initApp();
-  } else {
-    S.user = null;
-    document.getElementById('auth-screen').style.display = 'flex';
-    document.getElementById('app').style.display = 'none';
+const ADMIN_EMAIL = 'admin@qualitycoe.com';
+const ADMIN_PASS  = '1QAZWSX';
+
+async function seedAdminAccount() {
+  if (localStorage.getItem('pf_admin_seeded')) return;
+  try {
+    if (DEMO_MODE) {
+      const creds = JSON.parse(localStorage.getItem('pf_credentials')||'{}');
+      if (!Object.values(creds).find(u=>u.email===ADMIN_EMAIL)) {
+        const uid = 'admin_fixed_uid';
+        creds[uid] = { email:ADMIN_EMAIL, _pw:ADMIN_PASS };
+        localStorage.setItem('pf_credentials', JSON.stringify(creds));
+        const col = JSON.parse(localStorage.getItem('pf_users')||'{}');
+        col[uid] = { name:'Admin', email:ADMIN_EMAIL, role:'admin', createdAt:{seconds:Math.floor(Date.now()/1000)} };
+        localStorage.setItem('pf_users', JSON.stringify(col));
+      }
+      localStorage.setItem('pf_admin_seeded','1');
+    } else {
+      // Firebase：建立管理員帳號，再立刻登出
+      const cred = await auth.createUserWithEmailAndPassword(ADMIN_EMAIL, ADMIN_PASS);
+      await db.collection('users').doc(cred.user.uid).set({
+        name:'Admin', email:ADMIN_EMAIL, role:'admin',
+        createdAt: FV.serverTimestamp()
+      });
+      await auth.signOut();
+      localStorage.setItem('pf_admin_seeded','1');
+    }
+  } catch(e) {
+    if (e.code==='auth/email-already-in-use') localStorage.setItem('pf_admin_seeded','1');
   }
-});
+}
+
+// 先完成 admin seed，再啟動 auth 監聽，避免競爭條件
+(async () => {
+  await seedAdminAccount();
+  auth.onAuthStateChanged(async user => {
+    if (user) {
+      S.user = user;
+      await loadUserProfile();
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      initApp();
+    } else {
+      S.user = null;
+      document.getElementById('auth-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+    }
+  });
+})();
 
 async function loadUserProfile() {
   const doc = await db.collection('users').doc(S.user.uid).get();
@@ -893,7 +1003,7 @@ function renderProjectTopbar() {
       <div class="view-tab ${S.projectView==='list'?'active':''}" onclick="switchProjectView('list')">List</div>
     </div>
     <button class="btn btn-primary btn-sm" onclick="openCreateItemModal()">+ 建立</button>
-    ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openModal('modal-invite')">邀請成員</button>`:''}
+    <button class="btn btn-secondary btn-sm" onclick="openProjectMembers()">👥 成員（${(p.members||[]).length}）</button>
     ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEditProject('${p.id}')">✏️ 編輯</button>`:''}
     ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 刪除</button>`:''}
     <button class="btn btn-secondary btn-sm" onclick="showView('projects')">← 返回</button>`
@@ -1471,27 +1581,38 @@ async function renderAdmin() {
     return;
   }
   const snap = await db.collection('users').get();
-  const users = snap.docs.map(d=>({id:d.id,...d.data()}));
+  const users = snap.docs.map(d=>({id:d.id,...d.data()}))
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 
   document.getElementById('content').innerHTML = `
     <div class="section-header">
       <h2>成員管理（${users.length}）</h2>
+      <button class="btn btn-primary btn-sm" onclick="openModal('modal-invite-admin')">+ 新增成員</button>
     </div>
     <table class="members-table">
-      <thead><tr><th>姓名</th><th>Email</th><th>角色</th><th>加入時間</th><th>操作</th></tr></thead>
+      <thead><tr><th>成員</th><th>Email</th><th>角色</th><th>加入時間</th><th style="min-width:200px">操作</th></tr></thead>
       <tbody>
         ${users.map(u=>`<tr>
-          <td style="display:flex;align-items:center;gap:8px">
-            <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(u.name)}">${initials(u.name)}</div>
-            ${esc(u.name)}
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="user-avatar" style="width:30px;height:30px;font-size:11px;background:${avatarColor(u.name)}">${initials(u.name)}</div>
+              <div>
+                <div style="font-weight:500">${esc(u.name)}</div>
+                ${u.id===S.user.uid?'<div style="font-size:11px;color:#6b778c">（你）</div>':''}
+              </div>
+            </div>
           </td>
-          <td>${esc(u.email)}</td>
+          <td style="color:#6b778c">${esc(u.email)}</td>
           <td><span class="role-badge role-${u.role||'member'}">${u.role==='admin'?'管理員':'成員'}</span></td>
           <td style="color:#6b778c;font-size:12px">${formatTs(u.createdAt)}</td>
           <td>
-            ${u.id!==S.user.uid?`
-              <button class="btn btn-secondary btn-sm" onclick="toggleRole('${u.id}','${u.role}')">${u.role==='admin'?'降為成員':'升為管理員'}</button>
-            `:'（你）'}
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="openEditMember('${u.id}','${esc(u.name)}','${u.role||'member'}')">✏️ 編輯</button>
+              ${u.id!==S.user.uid?`
+              <button class="btn btn-secondary btn-sm" onclick="toggleRole('${u.id}','${u.role||'member'}')">${u.role==='admin'?'降為成員':'升為管理員'}</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteMember('${u.id}','${esc(u.name)}')">移除</button>
+              `:''}
+            </div>
           </td>
         </tr>`).join('')}
       </tbody>
@@ -1502,8 +1623,154 @@ async function renderAdmin() {
 async function toggleRole(uid, currentRole) {
   const newRole = currentRole==='admin'?'member':'admin';
   await db.collection('users').doc(uid).update({ role: newRole });
+  S.users[uid] && (S.users[uid].role = newRole);
   toast('角色已更新', 'success');
   renderAdmin();
+}
+
+function openEditMember(uid, name, role) {
+  document.getElementById('edit-member-uid').value = uid;
+  document.getElementById('edit-member-name').value = name;
+  document.getElementById('edit-member-role').value = role;
+  openModal('modal-edit-member');
+}
+
+async function saveEditMember() {
+  const uid  = document.getElementById('edit-member-uid').value;
+  const name = document.getElementById('edit-member-name').value.trim();
+  const role = document.getElementById('edit-member-role').value;
+  if (!name) { toast('請填寫姓名', 'error'); return; }
+  await db.collection('users').doc(uid).update({ name, role });
+  if (S.users[uid]) { S.users[uid].name = name; S.users[uid].role = role; }
+  if (uid === S.user.uid) { S.profile.name = name; S.profile.role = role; renderSidebar(); }
+  closeModal('modal-edit-member');
+  toast('成員資料已更新', 'success');
+  renderAdmin();
+}
+
+async function deleteMember(uid, name) {
+  if (!confirm(`確定要移除成員「${name}」？\n此操作將把該成員從所有專案中移除。`)) return;
+  // 從所有專案移除
+  const projSnap = await db.collection('projects').get();
+  await Promise.all(projSnap.docs.map(d => {
+    const members = d.data().members || [];
+    if (members.includes(uid)) {
+      return db.collection('projects').doc(d.id).update({
+        members: members.filter(m => m !== uid)
+      });
+    }
+  }));
+  // 刪除 user doc
+  await db.collection('users').doc(uid).delete();
+  delete S.users[uid];
+  toast(`成員 ${name} 已移除`, 'success');
+  renderAdmin();
+}
+
+async function adminCreateMember() {
+  const name  = document.getElementById('new-member-name').value.trim();
+  const email = document.getElementById('new-member-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('new-member-pass').value;
+  const role  = document.getElementById('new-member-role').value;
+  if (!name||!email||!pass) { toast('請填寫所有欄位','error'); return; }
+  if (pass.length < 6) { toast('密碼至少 6 位','error'); return; }
+
+  // 儲存目前登入狀態，建完帳號後恢復
+  const savedUser = S.user;
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await db.collection('users').doc(cred.user.uid).set({
+      name, email, role, createdAt: FV.serverTimestamp()
+    });
+    // 如果不是 demo mode，建完帳號會被自動登入，需登出再讓原本 admin 重新登入
+    if (!DEMO_MODE) {
+      await auth.signOut();
+      toast(`帳號已建立：${email}（請重新登入）`, 'success');
+    } else {
+      toast(`帳號已建立：${email}`, 'success');
+    }
+    closeModal('modal-invite-admin');
+    renderAdmin();
+  } catch(e) {
+    toast(translateAuthError(e.code), 'error');
+  }
+}
+
+// =============================================
+// PROJECT MEMBER MANAGEMENT
+// =============================================
+async function openProjectMembers() {
+  const p = S.currentProject;
+  if (!p) return;
+  await loadProjectUsers(p.id);
+  document.getElementById('proj-members-title').textContent = `${p.name} — 成員（${(p.members||[]).length}）`;
+  document.getElementById('proj-invite-email').value = '';
+  renderProjectMembersList();
+  openModal('modal-proj-members');
+}
+
+function renderProjectMembersList() {
+  const p = S.currentProject;
+  if (!p) return;
+  const isOwner = S.profile?.role==='admin' || p.createdBy===S.user.uid;
+  const members = (p.members||[]).map(uid => S.users[uid] || { uid, name: uid.substring(0,8), email:'', role:'member' });
+
+  document.getElementById('proj-members-list').innerHTML = members.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="padding:8px;text-align:left">成員</th>
+          <th style="padding:8px;text-align:left">Email</th>
+          <th style="padding:8px;text-align:left">角色</th>
+          ${isOwner?'<th style="padding:8px"></th>':''}
+        </tr></thead>
+        <tbody>
+          ${members.map(u=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(u.name)}">${initials(u.name)}</div>
+                <span style="font-weight:500">${esc(u.name)}</span>
+                ${u.uid===S.user.uid?'<span style="font-size:11px;color:#6b778c">（你）</span>':''}
+              </div>
+            </td>
+            <td style="padding:8px;color:#6b778c">${esc(u.email||'')}</td>
+            <td style="padding:8px"><span class="role-badge role-${u.role||'member'}">${u.role==='admin'?'管理員':'成員'}</span></td>
+            ${isOwner?`<td style="padding:8px">${u.uid!==S.user.uid?`<button class="btn btn-danger btn-sm" onclick="removeProjectMember('${u.uid}')">移除</button>`:''}</td>`:''}
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+    : '<div style="color:#6b778c;font-size:13px">尚無成員</div>';
+}
+
+async function removeProjectMember(uid) {
+  const p = S.currentProject;
+  if (!p) return;
+  const u = S.users[uid];
+  if (!confirm(`確定要從專案移除「${u?.name||uid}」？`)) return;
+  const newMembers = (p.members||[]).filter(m=>m!==uid);
+  await db.collection('projects').doc(p.id).update({ members: newMembers });
+  S.currentProject.members = newMembers;
+  toast('已移除成員', 'success');
+  renderProjectMembersList();
+  renderProjectTopbar();
+}
+
+async function inviteToCurrentProject() {
+  const email = document.getElementById('proj-invite-email').value.trim().toLowerCase();
+  if (!email) { toast('請填寫 Email', 'error'); return; }
+  const snap = await db.collection('users').where('email','==',email).get();
+  if (snap.empty) { toast('找不到此帳號，請確認對方已完成註冊', 'error'); return; }
+  const targetUid = snap.docs[0].id;
+  const p = S.currentProject;
+  if ((p.members||[]).includes(targetUid)) { toast('此成員已在專案中', 'error'); return; }
+  await db.collection('projects').doc(p.id).update({ members: FV.arrayUnion(targetUid) });
+  S.users[targetUid] = { uid:targetUid, ...snap.docs[0].data() };
+  document.getElementById('proj-invite-email').value = '';
+  toast(`已加入 ${email}`, 'success');
+  // refresh project
+  const projDoc = await db.collection('projects').doc(p.id).get();
+  S.currentProject = { id:p.id, ...projDoc.data() };
+  renderProjectMembersList();
+  renderProjectTopbar();
 }
 
 // =============================================
