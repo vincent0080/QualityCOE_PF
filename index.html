@@ -723,36 +723,55 @@ function getCachedEmail(name) {
 }
 
 async function login() {
-  const nameInput = document.getElementById('login-name').value.trim();
-  const pass = document.getElementById('login-password').value;
-  if (!nameInput || !pass) return showAuthError('請填寫帳號和密碼');
+  const input = document.getElementById('login-name').value.trim();
+  const pass  = document.getElementById('login-password').value;
+  if (!input || !pass) return showAuthError('請填寫帳號和密碼');
+
+  const isEmail = input.includes('@');
   try {
     let email;
+
     if (DEMO_MODE) {
-      const col = JSON.parse(localStorage.getItem('pf_users') || '{}');
-      const found = Object.entries(col).find(([, u]) => u.name === nameInput);
-      if (!found) throw { code: 'auth/user-not-found' };
+      const col   = JSON.parse(localStorage.getItem('pf_users')       || '{}');
       const creds = JSON.parse(localStorage.getItem('pf_credentials') || '{}');
-      const cred = creds[found[0]];
+      let foundUid;
+      if (isEmail) {
+        // 用 email 找 uid
+        const r = Object.entries(creds).find(([, u]) => u.email === input);
+        if (!r) throw { code: 'auth/user-not-found' };
+        foundUid = r[0];
+      } else {
+        // 用帳號名找 uid
+        const r = Object.entries(col).find(([, u]) => u.name === input);
+        if (!r) throw { code: 'auth/user-not-found' };
+        foundUid = r[0];
+      }
+      const cred = creds[foundUid];
       if (!cred) throw { code: 'auth/user-not-found' };
       email = cred.email;
+
     } else {
-      // 先查本地快取（未登入時 Firestore 可能被規則擋住）
-      email = getCachedEmail(nameInput);
-      if (!email) {
-        try {
-          const snap = await db.collection('users').where('name','==',nameInput).limit(1).get();
-          if (snap.empty) throw { code: 'auth/user-not-found' };
-          email = snap.docs[0].data().email;
-          cacheNameEmail(nameInput, email);
-        } catch(e) {
-          if (e.code) throw e;
-          // Firestore 權限錯誤（未登入被擋）→ 提示更新規則
-          showAuthError('查詢帳號失敗：請確認已更新 Firestore 安全規則（允許 users 公開讀取）');
-          return;
+      if (isEmail) {
+        // 直接用 email 登入
+        email = input;
+      } else {
+        // 帳號名登入：先查快取，再查 Firestore
+        email = getCachedEmail(input);
+        if (!email) {
+          try {
+            const snap = await db.collection('users').where('name','==',input).limit(1).get();
+            if (snap.empty) throw { code: 'auth/user-not-found' };
+            email = snap.docs[0].data().email;
+            cacheNameEmail(input, email);
+          } catch(e) {
+            if (e.code) throw e;
+            showAuthError('查詢帳號失敗：請先用 Email 格式登入一次，或更新 Firestore 安全規則');
+            return;
+          }
         }
       }
     }
+
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
     showAuthError(translateAuthError(e.code));
