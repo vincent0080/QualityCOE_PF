@@ -360,6 +360,11 @@ table.list-table{font-size:17px}
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
         所有專案
       </div>
+      <div class="sidebar-item" onclick="showView('mywork')" id="nav-mywork">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zM5 3H3v2h2V3zm0 4H3v2h2V7zm0 4H3v2h2v-2zm0 4H3v2h2v-2zm0 4H3v2h2v-2zM21 3h-2v2h2V3zm0 4h-2v2h2V7zm0 4h-2v2h2v-2zm0 4h-2v2h2v-2zm0 4h-2v2h2v-2zM17 5H7v14h10V5z"/></svg>
+        我的工作
+        <span id="mywork-badge" style="margin-left:auto;background:#0052cc;color:#fff;border-radius:10px;padding:1px 8px;font-size:13px;font-weight:700;display:none;line-height:1.6"></span>
+      </div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">我的專案</div>
@@ -805,6 +810,7 @@ let S = {
   users: {},          // uid -> profile cache
   panelItem: null,    // item currently in side panel
   linkTarget: null,   // selected item in link modal
+  myItems: [],        // items assigned to current user (cross-project)
   unsubs: [],         // firestore unsubscribers
   editingTitle: false,
   editingDesc: false,
@@ -1000,6 +1006,7 @@ async function loadUserProfile() {
 function initApp() {
   renderSidebar();
   subscribeProjects();
+  subscribeMyItems();
   showView('home');
   initTheme();
   initClock();
@@ -1077,6 +1084,84 @@ function subscribeProjectItems(projectId) {
   S.unsubs.push(unsub);
 }
 
+function subscribeMyItems() {
+  const unsub = db.collection('items')
+    .where('assignee', '==', S.user.uid)
+    .onSnapshot(snap => {
+      S.myItems = snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
+      // merge into allItems so openItemPanel can find them
+      S.myItems.forEach(item => {
+        const idx = S.allItems.findIndex(i=>i.id===item.id);
+        if (idx === -1) S.allItems.push(item);
+        else S.allItems[idx] = item;
+      });
+      updateMyWorkBadge();
+      if (document.getElementById('content').dataset.view === 'mywork') renderMyWork();
+    });
+  S.unsubs.push(unsub);
+}
+
+function updateMyWorkBadge() {
+  const count = S.myItems.filter(i=>i.status!=='done').length;
+  const badge = document.getElementById('mywork-badge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count; badge.style.display = ''; }
+  else { badge.style.display = 'none'; }
+}
+
+function renderMyWork() {
+  const content = document.getElementById('content');
+  content.dataset.view = 'mywork';
+  const items = S.myItems;
+  const undoneCount = items.filter(i=>i.status!=='done').length;
+  setTopbar(`我的工作`);
+
+  if (!items.length) {
+    content.innerHTML = '<div class="empty-state"><div style="font-size:48px;margin-bottom:12px">✅</div><p>目前沒有指派給你的工作</p></div>';
+    return;
+  }
+
+  // group by project
+  const byProject = {};
+  items.forEach(i => {
+    if (!byProject[i.projectId]) byProject[i.projectId] = [];
+    byProject[i.projectId].push(i);
+  });
+
+  const statusOrder = { in_progress:0, testing:1, todo:2, done:3 };
+  const rows = (pItems) => pItems
+    .sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9))
+    .map(i=>`<tr onclick="openItemPanel('${i.id}')" style="${i.status==='done'?'opacity:.55':''}">
+      <td>${typeIcon(i.type)}</td>
+      <td style="color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
+      <td>${esc(i.title)}</td>
+      <td>${statusBadge(i.status)}</td>
+      <td>${priorityBadge(i.priority)}</td>
+      <td style="color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
+    </tr>`).join('');
+
+  content.innerHTML = Object.entries(byProject).map(([pid, pItems], idx) => {
+    const proj = S.projects.find(p=>p.id===pid);
+    const projName = proj?.name || '未知專案';
+    const projColor = proj?.color || '#0052cc';
+    const undone = pItems.filter(i=>i.status!=='done').length;
+    return `
+      <div class="section-header" style="${idx>0?'margin-top:28px':''}">
+        <h2 style="display:flex;align-items:center;gap:8px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${projColor}"></span>
+          ${esc(projName)}
+          <span style="font-size:14px;font-weight:400;color:var(--txt2)">${undone} 項進行中</span>
+        </h2>
+      </div>
+      <div class="list-wrap" style="margin-bottom:8px">
+        <table class="list-table"><thead><tr>
+          <th>類型</th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
+        </tr></thead><tbody>${rows(pItems)}</tbody></table>
+      </div>`;
+  }).join('');
+}
+
 // =============================================
 // VIEWS
 // =============================================
@@ -1090,6 +1175,7 @@ function showView(view, projectId) {
 
   if (view === 'home')     { renderHome(); setTopbar('首頁'); }
   if (view === 'projects') { renderProjectsList(); setTopbar('所有專案'); }
+  if (view === 'mywork')   { renderMyWork(); }
   if (view === 'admin')    { renderAdmin(); setTopbar('管理員面板'); }
   if (view === 'project')  { openProject(projectId); }
 }
