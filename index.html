@@ -564,19 +564,20 @@ if (DEMO_MODE) {
   auth = {
     onAuthStateChanged(cb){ _acbs.push(cb); setTimeout(()=>cb(_cu),0); return ()=>{ _acbs.splice(_acbs.indexOf(cb),1); }; },
     async signInWithEmailAndPassword(email,pass){
-      const users=JSON.parse(localStorage.getItem('pf_users')||'{}');
-      const found=Object.entries(users).find(([,u])=>u.email===email&&u._pw===pass);
+      // 使用獨立 key pf_credentials，避免與 firestore users collection 衝突
+      const creds=JSON.parse(localStorage.getItem('pf_credentials')||'{}');
+      const found=Object.entries(creds).find(([,u])=>u.email===email&&u._pw===pass);
       if(!found) throw {code:'auth/user-not-found'};
       _cu={uid:found[0],email};
       localStorage.setItem('pf_auth',JSON.stringify(_cu));
       _acbs.forEach(cb=>cb(_cu));
     },
     async createUserWithEmailAndPassword(email,pass){
-      const users=JSON.parse(localStorage.getItem('pf_users')||'{}');
-      if(Object.values(users).find(u=>u.email===email)) throw {code:'auth/email-already-in-use'};
+      const creds=JSON.parse(localStorage.getItem('pf_credentials')||'{}');
+      if(Object.values(creds).find(u=>u.email===email)) throw {code:'auth/email-already-in-use'};
       const uid='u_'+Math.random().toString(36).slice(2);
-      users[uid]={email,_pw:pass};
-      localStorage.setItem('pf_users',JSON.stringify(users));
+      creds[uid]={email,_pw:pass};
+      localStorage.setItem('pf_credentials',JSON.stringify(creds));
       _cu={uid,email};
       localStorage.setItem('pf_auth',JSON.stringify(_cu));
       // 延遲觸發，讓 register() 有時間先存完 profile doc
