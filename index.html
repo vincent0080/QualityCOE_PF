@@ -227,7 +227,7 @@ select option{color:#172b4d}
       <div class="auth-tab" onclick="switchAuthTab('register')">註冊</div>
     </div>
     <div id="login-form">
-      <div class="form-group"><label>電子郵件</label><input type="email" id="login-email" placeholder="your@email.com"></div>
+      <div class="form-group"><label>帳號</label><input type="text" id="login-name" placeholder="輸入帳號名稱"></div>
       <div class="form-group"><label>密碼</label><input type="password" id="login-password" placeholder="••••••••"></div>
       <button class="btn btn-primary btn-block" onclick="login()">登入</button>
     </div>
@@ -517,10 +517,12 @@ select option{color:#172b4d}
       <div id="proj-members-list"></div>
       <hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px">新增成員</div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
-        <input type="email" id="proj-invite-email" placeholder="成員 Email（需先完成註冊）" style="padding:8px 12px;border:2px solid var(--border);border-radius:4px;font-size:13px">
-        <button class="btn btn-primary" onclick="inviteToCurrentProject()">加入</button>
+      <div style="margin-bottom:8px">
+        <input type="text" id="proj-invite-search" placeholder="搜尋帳號名稱…"
+          oninput="filterInviteList(this.value)"
+          style="width:100%;padding:8px 12px;border:2px solid var(--border);border-radius:4px;font-size:13px">
       </div>
+      <div id="proj-invite-list" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-proj-members')">關閉</button>
@@ -711,10 +713,24 @@ function switchAuthTab(tab) {
 }
 
 async function login() {
-  const email = document.getElementById('login-email').value.trim();
-  const pass  = document.getElementById('login-password').value;
-  if (!email||!pass) return showAuthError('請填寫電子郵件和密碼');
+  const nameInput = document.getElementById('login-name').value.trim();
+  const pass = document.getElementById('login-password').value;
+  if (!nameInput || !pass) return showAuthError('請填寫帳號和密碼');
   try {
+    let email;
+    if (DEMO_MODE) {
+      const col = JSON.parse(localStorage.getItem('pf_users') || '{}');
+      const found = Object.entries(col).find(([, u]) => u.name === nameInput);
+      if (!found) throw { code: 'auth/user-not-found' };
+      const creds = JSON.parse(localStorage.getItem('pf_credentials') || '{}');
+      const cred = creds[found[0]];
+      if (!cred) throw { code: 'auth/user-not-found' };
+      email = cred.email;
+    } else {
+      const snap = await db.collection('users').where('name', '==', nameInput).limit(1).get();
+      if (snap.empty) throw { code: 'auth/user-not-found' };
+      email = snap.docs[0].data().email;
+    }
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
     showAuthError(translateAuthError(e.code));
@@ -751,11 +767,16 @@ function showAuthError(msg) {
 
 function translateAuthError(code) {
   const map = {
-    'auth/user-not-found':'帳號不存在','auth/wrong-password':'密碼錯誤',
-    'auth/email-already-in-use':'此 Email 已被使用','auth/invalid-email':'Email 格式不正確',
-    'auth/weak-password':'密碼強度不足','auth/too-many-requests':'嘗試次數過多，請稍後再試'
+    'auth/user-not-found'       : '帳號不存在',
+    'auth/wrong-password'       : '密碼錯誤',
+    'auth/invalid-credential'   : '帳號或密碼錯誤',
+    'auth/invalid-login-credentials': '帳號或密碼錯誤',
+    'auth/email-already-in-use' : '此 Email 已被使用',
+    'auth/invalid-email'        : 'Email 格式不正確',
+    'auth/weak-password'        : '密碼強度不足',
+    'auth/too-many-requests'    : '嘗試次數過多，請稍後再試',
   };
-  return map[code] || '操作失敗，請重試';
+  return map[code] || '帳號或密碼錯誤';
 }
 
 // =============================================
@@ -835,19 +856,23 @@ function initApp() {
 // SUBSCRIPTIONS
 // =============================================
 function subscribeProjects() {
-  const unsub = db.collection('projects')
-    .where('members', 'array-contains', S.user.uid)
-    .onSnapshot(snap => {
-      S.projects = snap.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
-      renderSidebarProjects();
-      if (S.currentProject) {
-        const updated = S.projects.find(p=>p.id===S.currentProject.id);
-        if (updated) S.currentProject = updated;
-      }
-      if (document.getElementById('content').dataset.view === 'home') renderHome();
-      if (document.getElementById('content').dataset.view === 'projects') renderProjectsList();
-    });
+  // 管理員看所有專案，一般成員只看自己參與的
+  const isAdmin = S.profile?.role === 'admin';
+  const query = isAdmin
+    ? db.collection('projects')
+    : db.collection('projects').where('members', 'array-contains', S.user.uid);
+
+  const unsub = query.onSnapshot(snap => {
+    S.projects = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
+    renderSidebarProjects();
+    if (S.currentProject) {
+      const updated = S.projects.find(p=>p.id===S.currentProject.id);
+      if (updated) S.currentProject = updated;
+    }
+    if (document.getElementById('content').dataset.view === 'home') renderHome();
+    if (document.getElementById('content').dataset.view === 'projects') renderProjectsList();
+  });
   S.unsubs.push(unsub);
 }
 
@@ -1703,11 +1728,44 @@ async function openProjectMembers() {
   const p = S.currentProject;
   if (!p) return;
   await loadProjectUsers(p.id);
+  // 載入全部已註冊使用者供選擇
+  const snap = await db.collection('users').get();
+  snap.docs.forEach(d => { if (!S.users[d.id]) S.users[d.id] = { uid:d.id, ...d.data() }; });
   document.getElementById('proj-members-title').textContent = `${p.name} — 成員（${(p.members||[]).length}）`;
-  document.getElementById('proj-invite-email').value = '';
+  document.getElementById('proj-invite-search').value = '';
   renderProjectMembersList();
+  renderInviteList('');
   openModal('modal-proj-members');
 }
+
+function renderInviteList(filter) {
+  const p = S.currentProject;
+  if (!p) return;
+  const existing = new Set(p.members || []);
+  const all = Object.values(S.users)
+    .filter(u => !existing.has(u.uid))
+    .filter(u => !filter || u.name?.toLowerCase().includes(filter.toLowerCase()))
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  const el = document.getElementById('proj-invite-list');
+  if (!all.length) {
+    el.innerHTML = '<div style="padding:12px;color:#6b778c;font-size:13px">無可加入的成員</div>';
+    return;
+  }
+  el.innerHTML = all.map(u => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="user-avatar" style="width:26px;height:26px;font-size:10px;background:${avatarColor(u.name)}">${initials(u.name)}</div>
+        <div>
+          <div style="font-weight:500">${esc(u.name)}</div>
+          <div style="font-size:11px;color:#6b778c">${esc(u.email||'')}</div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="addMemberToProject('${u.uid}')">+ 加入</button>
+    </div>`).join('');
+}
+
+function filterInviteList(val) { renderInviteList(val); }
 
 function renderProjectMembersList() {
   const p = S.currentProject;
@@ -1754,22 +1812,16 @@ async function removeProjectMember(uid) {
   renderProjectTopbar();
 }
 
-async function inviteToCurrentProject() {
-  const email = document.getElementById('proj-invite-email').value.trim().toLowerCase();
-  if (!email) { toast('請填寫 Email', 'error'); return; }
-  const snap = await db.collection('users').where('email','==',email).get();
-  if (snap.empty) { toast('找不到此帳號，請確認對方已完成註冊', 'error'); return; }
-  const targetUid = snap.docs[0].id;
+async function addMemberToProject(uid) {
   const p = S.currentProject;
-  if ((p.members||[]).includes(targetUid)) { toast('此成員已在專案中', 'error'); return; }
-  await db.collection('projects').doc(p.id).update({ members: FV.arrayUnion(targetUid) });
-  S.users[targetUid] = { uid:targetUid, ...snap.docs[0].data() };
-  document.getElementById('proj-invite-email').value = '';
-  toast(`已加入 ${email}`, 'success');
-  // refresh project
-  const projDoc = await db.collection('projects').doc(p.id).get();
-  S.currentProject = { id:p.id, ...projDoc.data() };
+  if (!p) return;
+  if ((p.members||[]).includes(uid)) { toast('此成員已在專案中', 'error'); return; }
+  await db.collection('projects').doc(p.id).update({ members: FV.arrayUnion(uid) });
+  S.currentProject.members = [...(p.members||[]), uid];
+  const u = S.users[uid];
+  toast(`已加入 ${u?.name || uid}`, 'success');
   renderProjectMembersList();
+  renderInviteList(document.getElementById('proj-invite-search').value);
   renderProjectTopbar();
 }
 
