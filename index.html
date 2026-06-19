@@ -154,8 +154,8 @@ body[data-theme="dark"] .project-card-add .add-label{color:var(--txt2) !importan
 .search-box input::placeholder{color:#6b778c}
 
 /* ===== BOARDS ===== */
-.board-wrap{display:flex;gap:16px;overflow-x:auto;padding-bottom:16px;min-height:calc(100vh - 140px)}
-.board-col{min-width:280px;max-width:280px;background:#ebecf0;border-radius:8px;display:flex;flex-direction:column}
+.board-wrap{display:flex;gap:16px;padding-bottom:16px;min-height:calc(100vh - 140px)}
+.board-col{flex:1;min-width:200px;background:#ebecf0;border-radius:8px;display:flex;flex-direction:column}
 .board-col-header{padding:12px 14px 8px;display:flex;align-items:center;justify-content:space-between}
 .board-col-title{font-size:12px;font-weight:600;color:#5e6c84}
 .board-col-count{background:#dfe1e6;color:#5e6c84;font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px}
@@ -1129,6 +1129,7 @@ function renderHome() {
           <div class="project-stats">
             <div class="stat"><div class="stat-num">${countStatus(p.id,'todo')}</div><div class="stat-lbl">待處理</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'in_progress')}</div><div class="stat-lbl">進行中</div></div>
+            <div class="stat"><div class="stat-num">${countStatus(p.id,'testing')}</div><div class="stat-lbl">測試中</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'done')}</div><div class="stat-lbl">完成</div></div>
           </div>
           ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
@@ -1700,6 +1701,10 @@ async function savePanelField(field, value) {
   if (field === 'status' && value === 'done') {
     updates.progress = 100;
     S.panelItem.progress = 100;
+  }
+  if (field === 'progress' && value === 100 && S.panelItem.status !== 'done') {
+    updates.status = 'done';
+    S.panelItem.status = 'done';
   }
   await db.collection('items').doc(S.panelItem.id).update(updates);
   S.panelItem[field] = value;
