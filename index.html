@@ -1037,8 +1037,13 @@ function subscribeMyItems() {
   S.unsubs.push(u1, u2);
 }
 
+function activeProjectIdSet() {
+  return new Set(S.projects.filter(p=>!p.archived).map(p=>p.id));
+}
+
 function updateMyWorkBadge() {
-  const count = S.myItems.filter(i=>i.status!=='done').length;
+  const active = activeProjectIdSet();
+  const count = S.myItems.filter(i=>active.has(i.projectId)&&i.status!=='done').length;
   const badge = document.getElementById('mywork-badge');
   if (!badge) return;
   if (count > 0) { badge.textContent = count; badge.style.display = ''; }
@@ -1048,7 +1053,8 @@ function updateMyWorkBadge() {
 function renderMyWork() {
   const content = document.getElementById('content');
   content.dataset.view = 'mywork';
-  const items = S.myItems;
+  const active = activeProjectIdSet();
+  const items = S.myItems.filter(i=>active.has(i.projectId));
   const undoneCount = items.filter(i=>i.status!=='done').length;
   setTopbar(`我的工作`);
 
@@ -1109,16 +1115,17 @@ async function renderMemberLoad() {
   content.dataset.view = 'memberload';
   content.innerHTML = '<div class="empty-state"><p>載入中…</p></div>';
 
-  // Fetch all items across all accessible projects
+  // Fetch all items (all members can read items; fallback to S.allItems if rules restrict)
   let allItems = [];
   try {
-    const snaps = await Promise.all(
-      S.projects.map(p => db.collection('items').where('projectId','==',p.id).get())
-    );
-    snaps.forEach(s => s.docs.forEach(d => allItems.push({id:d.id,...d.data()})));
+    const snap = await db.collection('items').get();
+    allItems = snap.docs.map(d=>({id:d.id,...d.data()}));
   } catch(e) {
     allItems = [...S.allItems];
   }
+  // Exclude items from archived projects
+  const archivedIds = new Set(S.projects.filter(p=>p.archived).map(p=>p.id));
+  allItems = allItems.filter(i => !archivedIds.has(i.projectId));
 
   const users = Object.values(S.users).filter(u=>u.uid);
   if (!users.length) {
@@ -1173,7 +1180,7 @@ async function renderMemberLoad() {
     <div class="list-wrap">
       <table class="list-table" style="table-layout:fixed;width:100%">
         <colgroup>
-          <col style="width:180px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col><col style="width:54px">
+          <col style="width:180px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col><col style="width:72px">
         </colgroup>
         <thead><tr>
           <th>成員</th>
@@ -1282,7 +1289,8 @@ function setTopbar(title, actions='') {
 // =============================================
 function renderHome() {
   const myItems = S.items.filter(i=>(i.assignee===S.user.uid||i.assignee2===S.user.uid) && i.status!=='done').slice(0,8);
-  const recentProjects = S.projects.slice(0,6);
+  const recentProjects = S.projects.filter(p=>!p.archived).slice(0,6);
+  const archivedProjects = S.projects.filter(p=>p.archived);
 
   document.getElementById('content').innerHTML = `
     <div class="section-header"><h2>我的專案</h2><button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button></div>
@@ -1294,6 +1302,7 @@ function renderHome() {
             ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
             <div style="display:flex;gap:4px;flex-shrink:0">
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
+              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();archiveProject('${p.id}')" title="封存">📦</button>
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
             </div>`:''}
           </div>
@@ -1325,6 +1334,33 @@ function renderHome() {
           <td style="color:${dueDateColor(i.dueDate)}">${formatDate(i.dueDate)||'—'}</td>
         </tr>`).join('')}
       </tbody></table>
+    </div>`:''}
+    ${archivedProjects.length?`
+    <div style="margin-top:28px">
+      <div class="section-header" style="cursor:pointer;user-select:none" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <h2 style="display:flex;align-items:center;gap:8px;color:var(--txt2)">
+          <span style="font-size:18px">📦</span> 封存區
+          <span style="font-size:13px;font-weight:400;background:var(--border);padding:1px 8px;border-radius:10px">${archivedProjects.length}</span>
+          <span style="font-size:12px;font-weight:400;color:var(--txt2)">(點擊展開/收合)</span>
+        </h2>
+      </div>
+      <div style="display:none">
+        <div class="home-grid">
+          ${archivedProjects.map(p=>`
+          <div class="project-card" style="border-top-color:#8b949e;opacity:.8;cursor:pointer" onclick="showView('project','${p.id}')">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+              <h3 style="color:var(--txt2)">${esc(p.name)}</h3>
+              ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();unarchiveProject('${p.id}')" title="解封存" style="color:#0052cc">↩ 解封存</button>
+                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
+              </div>`:''}
+            </div>
+            <p>${esc(p.description||'')}</p>
+            <div style="font-size:12px;color:var(--txt2);margin-top:8px;padding:6px 10px;background:var(--border);border-radius:4px;text-align:center">📦 已封存</div>
+          </div>`).join('')}
+        </div>
+      </div>
     </div>`:''}`;
   document.getElementById('content').dataset.view='home';
 }
@@ -1342,27 +1378,57 @@ function projectProgress(projectId) {
 // PROJECTS LIST
 // =============================================
 function renderProjectsList() {
+  const active = S.projects.filter(p=>!p.archived);
+  const archived = S.projects.filter(p=>p.archived);
+  const canAdmin = p => S.profile?.role==='admin'||p.createdBy===S.user.uid;
+  const activeCard = p => `
+    <div class="project-card" style="border-top-color:${p.color||'#0052cc'};cursor:pointer" onclick="showView('project','${p.id}')">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+        <h3>${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
+        ${canAdmin(p)?`<div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();archiveProject('${p.id}')" title="封存">📦</button>
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
+        </div>`:''}
+      </div>
+      <p>${esc(p.description||'')}</p>
+      <div style="font-size:12px;color:#6b778c;margin-bottom:8px">成員：${(p.members||[]).length} 人</div>
+      ${(()=>{const pct=projectProgress(p.id);return `<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
+    </div>`;
+
   document.getElementById('content').innerHTML = `
     <div class="section-header">
-      <h2>所有專案（${S.projects.length}）</h2>
+      <h2>所有專案（${active.length}）</h2>
       <button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button>
     </div>
-    <div class="home-grid">
-      ${S.projects.map(p=>`
-        <div class="project-card" style="border-top-color:${p.color||'#0052cc'};cursor:pointer" onclick="showView('project','${p.id}')">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
-            <h3>${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
-            ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
-            <div style="display:flex;gap:4px;flex-shrink:0">
-              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
-              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
-            </div>`:''}
-          </div>
-          <p>${esc(p.description||'')}</p>
-          <div style="font-size:12px;color:#6b778c;margin-bottom:8px">成員：${(p.members||[]).length} 人</div>
-          ${(()=>{const pct=projectProgress(p.id);return `<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
-        </div>`).join('')}
-    </div>`;
+    <div class="home-grid">${active.map(activeCard).join('')}</div>
+    ${archived.length?`
+    <div style="margin-top:28px">
+      <div class="section-header" style="cursor:pointer;user-select:none" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <h2 style="display:flex;align-items:center;gap:8px;color:var(--txt2)">
+          <span style="font-size:18px">📦</span> 封存區
+          <span style="font-size:13px;font-weight:400;background:var(--border);padding:1px 8px;border-radius:10px">${archived.length}</span>
+          <span style="font-size:12px;font-weight:400;color:var(--txt2)">(點擊展開/收合)</span>
+        </h2>
+      </div>
+      <div style="display:none">
+        <div class="home-grid">
+          ${archived.map(p=>`
+          <div class="project-card" style="border-top-color:#8b949e;opacity:.8;cursor:pointer" onclick="showView('project','${p.id}')">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+              <h3 style="color:var(--txt2)">${esc(p.name)} <span style="font-size:11px;font-weight:400">[${esc(p.key)}]</span></h3>
+              ${canAdmin(p)?`<div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();unarchiveProject('${p.id}')" style="color:#0052cc">↩ 解封存</button>
+                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
+              </div>`:''}
+            </div>
+            <p>${esc(p.description||'')}</p>
+            <div style="font-size:12px;color:var(--txt2);margin-bottom:8px">成員：${(p.members||[]).length} 人</div>
+            <div style="font-size:12px;color:var(--txt2);padding:6px 10px;background:var(--border);border-radius:4px;text-align:center">📦 已封存</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`:''}`;
   document.getElementById('content').dataset.view='projects';
 }
 
@@ -1402,6 +1468,9 @@ function renderProjectTopbar() {
     <input type="file" id="import-xlsx-input" accept=".xlsx" style="display:none" onchange="handleImportXlsx(this)">
     <button class="btn btn-secondary btn-sm" onclick="openProjectMembers()">👥 成員（${(p.members||[]).length}）</button>
     ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEditProject('${p.id}')">✏️ 編輯</button>`:''}
+    ${isAdmin?(p.archived
+      ? `<button class="btn btn-secondary btn-sm" onclick="unarchiveProject('${p.id}')" style="color:#0052cc">↩ 解封存</button>`
+      : `<button class="btn btn-secondary btn-sm" onclick="archiveProject('${p.id}')">📦 封存</button>`):''}
     ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 刪除</button>`:''}
     <button class="btn btn-secondary btn-sm" onclick="showView('projects')">← 返回</button>`
   );
@@ -2165,6 +2234,22 @@ async function deleteProject(projectId) {
   if (S.currentProject?.id === projectId) showView('projects');
 }
 
+async function archiveProject(projectId) {
+  const p = S.projects.find(pr=>pr.id===projectId);
+  if (!p) return;
+  if (!confirm(`確定要封存專案「${p.name}」？\n封存後任務將從成員負載和我的工作中隱藏，可隨時解封存。`)) return;
+  await db.collection('projects').doc(projectId).update({ archived: true });
+  toast('專案已封存', 'success');
+  if (S.currentProject?.id === projectId) showView('projects');
+}
+
+async function unarchiveProject(projectId) {
+  const p = S.projects.find(pr=>pr.id===projectId);
+  if (!p) return;
+  await db.collection('projects').doc(projectId).update({ archived: false });
+  toast('已解除封存', 'success');
+}
+
 // =============================================
 // MEMBER MANAGEMENT
 // =============================================
@@ -2479,7 +2564,7 @@ function renderSidebar() {
 
 function renderSidebarProjects() {
   const container = document.getElementById('sidebar-projects');
-  container.innerHTML = S.projects.slice(0,12).map(p=>`
+  container.innerHTML = S.projects.filter(p=>!p.archived).slice(0,12).map(p=>`
     <div class="sidebar-item" data-pid="${p.id}" onclick="showView('project','${p.id}')">
       <div class="project-dot" style="background:${p.color||'#0052cc'}"></div>
       ${esc(p.name)}
