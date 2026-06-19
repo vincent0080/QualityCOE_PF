@@ -11,7 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f4f5f7;color:#172b4d;height:100vh;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans TC',sans-serif;background:#f4f5f7;color:#172b4d;height:100vh;overflow:hidden;font-size:15px}
+input,select,textarea,button{font-family:inherit;font-size:inherit}
 :root{
   --sidebar:#1e2a3a;--sidebar-hover:#2c3e52;--sidebar-active:#3a506b;--sidebar-text:#b8c4d0;
   --accent:#0052cc;--accent-h:#0065ff;--accent-light:#deebff;
@@ -337,6 +338,12 @@ table.list-table{font-size:17px}
 .toast-item{font-size:17.5px}
 .empty-state p{font-size:18px}
 .tag{font-size:15px}.hint{font-size:15px}
+/* ===== COLOR SWATCH PICKER ===== */
+.color-swatch-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;padding:8px 0}
+.color-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:.15s;flex-shrink:0}
+.color-swatch:hover{transform:scale(1.15)}
+.color-swatch.selected{border-color:#172b4d;box-shadow:0 0 0 2px #fff,0 0 0 4px #172b4d}
+body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0 0 0 2px #161b22,0 0 0 4px #c9d1d9}
 </style>
 </head>
 <body>
@@ -456,14 +463,8 @@ table.list-table{font-size:17px}
       <div class="form-group"><label>說明</label><textarea id="proj-desc" rows="3" placeholder="專案描述…"></textarea></div>
       <div class="form-group">
         <label>顏色</label>
-        <select id="proj-color">
-          <option value="#0052cc">藍色</option>
-          <option value="#36b37e">綠色</option>
-          <option value="#ff5630">紅色</option>
-          <option value="#ff8b00">橘色</option>
-          <option value="#6554c0">紫色</option>
-          <option value="#00b8d9">青色</option>
-        </select>
+        <div class="color-swatch-grid" id="proj-color-grid"></div>
+        <input type="hidden" id="proj-color" value="#0052cc">
       </div>
     </div>
     <div class="modal-footer">
@@ -1339,6 +1340,8 @@ function renderProjectTopbar() {
     </div>
     <button class="btn btn-primary btn-sm" onclick="openCreateItemModal()">+ 建立</button>
     <button class="btn btn-secondary btn-sm" onclick="exportProjectXlsx()">↓ 匯出</button>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-xlsx-input').click()">↑ 匯入</button>
+    <input type="file" id="import-xlsx-input" accept=".xlsx" style="display:none" onchange="handleImportXlsx(this)">
     <button class="btn btn-secondary btn-sm" onclick="openProjectMembers()">👥 成員（${(p.members||[]).length}）</button>
     ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEditProject('${p.id}')">✏️ 編輯</button>`:''}
     ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 刪除</button>`:''}
@@ -1884,10 +1887,29 @@ function openEditProject(projectId) {
   document.getElementById('proj-name').value = p.name;
   document.getElementById('proj-key').value = p.key;
   document.getElementById('proj-desc').value = p.description || '';
-  document.getElementById('proj-color').value = p.color || '#0052cc';
+  const c = p.color || '#0052cc';
+  document.getElementById('proj-color').value = c;
+  renderColorSwatches(c);
   openModal('modal-project');
 }
 
+const PROJECT_COLORS = [
+  '#0052cc','#0065ff','#00b8d9','#00c7e6',
+  '#36b37e','#00875a','#57d9a3','#006644',
+  '#ff5630','#de350b','#ff8b00','#ffab00',
+  '#6554c0','#8777d9','#403294','#5e6c84',
+];
+function renderColorSwatches(selected) {
+  const grid = document.getElementById('proj-color-grid');
+  if (!grid) return;
+  grid.innerHTML = PROJECT_COLORS.map(c =>
+    `<div class="color-swatch${c===selected?' selected':''}" style="background:${c}" title="${c}" onclick="pickProjectColor('${c}')"></div>`
+  ).join('');
+}
+function pickProjectColor(color) {
+  document.getElementById('proj-color').value = color;
+  renderColorSwatches(color);
+}
 function openCreateProjectModal() {
   document.getElementById('modal-project-title').textContent = '建立專案';
   document.getElementById('proj-submit-btn').textContent = '建立';
@@ -1896,6 +1918,7 @@ function openCreateProjectModal() {
   document.getElementById('proj-key').value = '';
   document.getElementById('proj-desc').value = '';
   document.getElementById('proj-color').value = '#0052cc';
+  renderColorSwatches('#0052cc');
   openModal('modal-project');
 }
 
@@ -2384,6 +2407,55 @@ function avatarColor(name) {
   let h=0; for(let c of name) h=(h*31+c.charCodeAt(0))&0xffffffff;
   return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length];
 }
+function handleImportXlsx(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!S.currentProject) { toast('請先選擇一個專案', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type:'array', cellDates:true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      const statusMap = {'待處理':'todo','進行中':'in_progress','測試中':'testing','完成':'done'};
+      const priorityMap = {'最高':'highest','高':'high','中':'medium','低':'low','最低':'lowest'};
+      const typeMap = {'任務':'task','錯誤':'bug','功能':'feature','問題':'issue'};
+      const nameToUid = {};
+      Object.values(S.users).forEach(u=>{ if(u.name) nameToUid[u.name]=u.uid; });
+      let updated=0, skipped=0;
+      for (const row of rows) {
+        const key = String(row['代號']||'').trim();
+        if (!key) { skipped++; continue; }
+        const item = S.items.find(i=>i.key===key);
+        if (!item) { skipped++; continue; }
+        const updates = { updatedAt: FV.serverTimestamp() };
+        if (row['標題']) updates.title = String(row['標題']);
+        if (row['說明']!==undefined) updates.description = String(row['說明']||'');
+        if (row['狀態'] && statusMap[row['狀態']]) updates.status = statusMap[row['狀態']];
+        if (row['優先度'] && priorityMap[row['優先度']]) updates.priority = priorityMap[row['優先度']];
+        if (row['類型'] && typeMap[row['類型']]) updates.type = typeMap[row['類型']];
+        const pct = parseInt(row['進度(%)']);
+        if (!isNaN(pct)) updates.progress = Math.min(100,Math.max(0,pct));
+        if (updates.status==='done' && updates.progress===undefined) updates.progress=100;
+        const due = row['截止日期'];
+        if (due) {
+          if (due instanceof Date) updates.dueDate = due.toISOString().split('T')[0];
+          else if (String(due).match(/^\d{4}-\d{2}-\d{2}/)) updates.dueDate = String(due).substring(0,10);
+        }
+        if (row['指派給'] && nameToUid[String(row['指派給'])]) updates.assignee = nameToUid[String(row['指派給'])];
+        await db.collection('items').doc(item.id).update(updates);
+        updated++;
+      }
+      toast(`匯入完成：更新 ${updated} 筆，跳過 ${skipped} 筆`, 'success');
+    } catch(err) {
+      console.error(err);
+      toast('匯入失敗，請確認檔案格式', 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 function exportProjectXlsx() {
   if (!S.currentProject) { toast('請先選擇一個專案', 'error'); return; }
   if (!S.items.length) { toast('此專案沒有任務可匯出', 'error'); return; }
