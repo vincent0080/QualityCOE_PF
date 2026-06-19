@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quality COE Project Flow</title>
 <script>!function(){var t=localStorage.getItem('pf_theme');if(t)document.documentElement.setAttribute('data-theme',t)}()</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -84,7 +85,13 @@ body[data-theme="dark"] #link-search-results div:hover{background:#21262d !impor
 body[data-theme="dark"] .btn-secondary{background:#21262d;color:var(--txt);border-color:var(--border)}
 body[data-theme="dark"] .btn-secondary:hover{background:#30363d}
 body[data-theme="dark"] .member-card{background:#21262d;border-color:var(--border)}
-body[data-theme="dark"] .project-card{background:#161b22}
+body[data-theme="dark"] .project-card{background:#161b22;color:var(--txt)}
+body[data-theme="dark"] .project-card .stat-num{color:var(--txt)}
+body[data-theme="dark"] .project-card .stat-lbl{color:var(--txt2)}
+body[data-theme="dark"] .project-card h3{color:var(--txt)}
+body[data-theme="dark"] .project-card p{color:var(--txt2)}
+body[data-theme="dark"] .project-card-add{background:#21262d !important;border-top-color:#30363d !important}
+body[data-theme="dark"] .project-card-add .add-label{color:var(--txt2) !important}
 
 /* ===== AUTH ===== */
 #auth-screen{display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#1e2a3a 0%,#0052cc 100%)}
@@ -489,11 +496,11 @@ table.list-table{font-size:17px}
         <div class="form-group">
           <label>優先度</label>
           <select id="item-priority">
-            <option value="highest">↑↑ 最高</option>
-            <option value="high">↑ 高</option>
-            <option value="medium" selected>— 中</option>
-            <option value="low">↓ 低</option>
-            <option value="lowest">↓↓ 最低</option>
+            <option value="highest">最高</option>
+            <option value="high">高</option>
+            <option value="medium" selected>中</option>
+            <option value="low">低</option>
+            <option value="lowest">最低</option>
           </select>
         </div>
         <div class="form-group">
@@ -1238,9 +1245,10 @@ function renderHome() {
             <div class="stat"><div class="stat-num">${countStatus(p.id,'in_progress')}</div><div class="stat-lbl">進行中</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'done')}</div><div class="stat-lbl">完成</div></div>
           </div>
+          ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px;cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>整體進度</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
-      <div class="project-card" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openCreateProjectModal()">
-        <div style="text-align:center;color:#6b778c"><div style="font-size:28px">+</div><div style="font-size:13px;margin-top:4px">建立新專案</div></div>
+      <div class="project-card project-card-add" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openCreateProjectModal()">
+        <div style="text-align:center;color:#6b778c" class="add-label"><div style="font-size:28px">+</div><div style="font-size:13px;margin-top:4px">建立新專案</div></div>
       </div>
     </div>
     ${myItems.length?`
@@ -1265,6 +1273,11 @@ function renderHome() {
 function countStatus(projectId, status) {
   return S.allItems.filter(i=>i.projectId===projectId&&i.status===status).length;
 }
+function projectProgress(projectId) {
+  const items = S.allItems.filter(i=>i.projectId===projectId);
+  if (!items.length) return 0;
+  return Math.round(items.reduce((s,i)=>s+(i.progress||0),0)/items.length);
+}
 
 // =============================================
 // PROJECTS LIST
@@ -1287,7 +1300,8 @@ function renderProjectsList() {
             </div>`:''}
           </div>
           <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
-          <div style="font-size:12px;color:#6b778c;cursor:pointer" onclick="showView('project','${p.id}')">成員：${(p.members||[]).length} 人</div>
+          <div style="font-size:12px;color:#6b778c;cursor:pointer;margin-bottom:8px" onclick="showView('project','${p.id}')">成員：${(p.members||[]).length} 人</div>
+          ${(()=>{const pct=projectProgress(p.id);return `<div style="cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>整體進度</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
     </div>`;
   document.getElementById('content').dataset.view='projects';
@@ -1324,6 +1338,7 @@ function renderProjectTopbar() {
       <div class="view-tab ${S.projectView==='list'?'active':''}" onclick="switchProjectView('list')">List</div>
     </div>
     <button class="btn btn-primary btn-sm" onclick="openCreateItemModal()">+ 建立</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportProjectXlsx()">↓ 匯出</button>
     <button class="btn btn-secondary btn-sm" onclick="openProjectMembers()">👥 成員（${(p.members||[]).length}）</button>
     ${isAdmin?`<button class="btn btn-secondary btn-sm" onclick="openEditProject('${p.id}')">✏️ 編輯</button>`:''}
     ${isAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}')">🗑 刪除</button>`:''}
@@ -1870,7 +1885,7 @@ function openEditProject(projectId) {
   document.getElementById('proj-key').value = p.key;
   document.getElementById('proj-desc').value = p.description || '';
   document.getElementById('proj-color').value = p.color || '#0052cc';
-  openCreateProjectModal();
+  openModal('modal-project');
 }
 
 function openCreateProjectModal() {
@@ -1881,7 +1896,7 @@ function openCreateProjectModal() {
   document.getElementById('proj-key').value = '';
   document.getElementById('proj-desc').value = '';
   document.getElementById('proj-color').value = '#0052cc';
-  openCreateProjectModal();
+  openModal('modal-project');
 }
 
 async function saveProject() {
@@ -2288,11 +2303,11 @@ function statusBadge(s) {
 }
 function priorityBadge(p) {
   const map={highest:'badge-highest',high:'badge-high',medium:'badge-medium',low:'badge-low',lowest:'badge-lowest'};
-  const lbl={highest:'↑↑ 最高',high:'↑ 高',medium:'— 中',low:'↓ 低',lowest:'↓↓ 最低'};
+  const lbl={highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'};
   return `<span class="badge ${map[p]||'badge-medium'}">${lbl[p]||p}</span>`;
 }
 function priorityLabel(p) {
-  return {highest:'↑↑ 最高',high:'↑ 高',medium:'— 中',low:'↓ 低',lowest:'↓↓ 最低'}[p]||p;
+  return {highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'}[p]||p;
 }
 function priorityColor(p) {
   return {highest:'#de350b',high:'#ff8b00',medium:'#f59e0b',low:'#36b37e',lowest:'#dfe1e6'}[p]||'#dfe1e6';
@@ -2369,6 +2384,32 @@ function avatarColor(name) {
   let h=0; for(let c of name) h=(h*31+c.charCodeAt(0))&0xffffffff;
   return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length];
 }
+function exportProjectXlsx() {
+  if (!S.currentProject) { toast('請先選擇一個專案', 'error'); return; }
+  if (!S.items.length) { toast('此專案沒有任務可匯出', 'error'); return; }
+  const statusMap = { todo:'待處理', in_progress:'進行中', testing:'測試中', done:'完成' };
+  const priorityMap = { highest:'最高', high:'高', medium:'中', low:'低', lowest:'最低' };
+  const typeMap = { task:'任務', bug:'錯誤', feature:'功能', issue:'問題' };
+  const rows = S.items.map(i => ({
+    '代號': i.key||'',
+    '類型': typeMap[i.type]||i.type||'',
+    '標題': i.title||'',
+    '說明': i.description||'',
+    '狀態': statusMap[i.status]||i.status||'',
+    '優先度': priorityMap[i.priority]||i.priority||'',
+    '進度(%)': i.progress||0,
+    '指派給': getUserName(i.assignee),
+    '截止日期': i.dueDate||'',
+    '建立時間': formatTs(i.createdAt),
+    '更新時間': formatTs(i.updatedAt),
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, S.currentProject.name.substring(0,31));
+  XLSX.writeFile(wb, `${S.currentProject.key}_${S.currentProject.name}.xlsx`);
+  toast('匯出成功', 'success');
+}
+
 function formatDate(d) {
   if (!d) return '';
   return new Date(d+'T00:00:00').toLocaleDateString('zh-TW',{month:'short',day:'numeric'});
