@@ -405,6 +405,10 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
         我的工作
         <span id="mywork-badge" style="margin-left:auto;background:#0052cc;color:#fff;border-radius:10px;padding:1px 8px;font-size:13px;font-weight:700;display:none;line-height:1.6"></span>
       </div>
+      <div class="sidebar-item" onclick="showView('memberload')" id="nav-memberload">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        成員負載
+      </div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-section-title">我的專案</div>
@@ -1064,12 +1068,12 @@ function renderMyWork() {
   const itemRows = (pItems) => pItems
     .sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9))
     .map(i=>`<tr onclick="openItemPanel('${i.id}')" style="${i.status==='done'?'opacity:.55':''}">
-      <td style="width:60px">${typeCell(i.type)}</td>
-      <td style="width:90px;color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
-      <td>${esc(i.title)}</td>
-      <td style="width:110px">${statusBadge(i.status)}</td>
-      <td style="width:80px">${priorityBadge(i.priority)}</td>
-      <td style="width:80px;color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
+      <td style="text-align:center">${typeIcon(i.type)}</td>
+      <td style="color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.title)}</td>
+      <td>${statusBadge(i.status)}</td>
+      <td>${priorityBadge(i.priority)}</td>
+      <td style="color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
     </tr>`).join('');
 
   const projectSections = Object.entries(byProject).map(([pid, pItems]) => {
@@ -1086,12 +1090,165 @@ function renderMyWork() {
     <div class="list-wrap">
       <table class="list-table" style="table-layout:fixed;width:100%">
         <colgroup>
-          <col style="width:60px"><col style="width:90px"><col><col style="width:110px"><col style="width:80px"><col style="width:80px">
+          <col style="width:36px"><col style="width:88px"><col><col style="width:108px"><col style="width:76px"><col style="width:76px">
         </colgroup>
         <thead><tr>
-          <th>類型</th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
+          <th></th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
         </tr></thead>
         <tbody>${projectSections}</tbody>
+      </table>
+    </div>`;
+}
+
+// =============================================
+// MEMBER LOAD
+// =============================================
+async function renderMemberLoad() {
+  setTopbar('成員負載');
+  const content = document.getElementById('content');
+  content.dataset.view = 'memberload';
+  content.innerHTML = '<div class="empty-state"><p>載入中…</p></div>';
+
+  // Fetch all items across all accessible projects
+  let allItems = [];
+  try {
+    const snaps = await Promise.all(
+      S.projects.map(p => db.collection('items').where('projectId','==',p.id).get())
+    );
+    snaps.forEach(s => s.docs.forEach(d => allItems.push({id:d.id,...d.data()})));
+  } catch(e) {
+    allItems = [...S.allItems];
+  }
+
+  const users = Object.values(S.users).filter(u=>u.uid);
+  if (!users.length) {
+    content.innerHTML = '<div class="empty-state"><p>尚無成員資料</p></div>';
+    return;
+  }
+
+  const statusOrder = {in_progress:0,testing:1,todo:2,done:3};
+  const stats = users.map(u => {
+    const mine = allItems.filter(i => i.assignee===u.uid || i.assignee2===u.uid);
+    const done     = mine.filter(i=>i.status==='done').length;
+    const inProg   = mine.filter(i=>i.status==='in_progress').length;
+    const testing  = mine.filter(i=>i.status==='testing').length;
+    const todo     = mine.filter(i=>i.status==='todo').length;
+    const total    = mine.length;
+    const donePct  = total ? Math.round(done/total*100) : 0;
+    const avgProg  = total ? Math.round(mine.reduce((s,i)=>s+(i.progress||0),0)/total) : 0;
+    const undone   = mine.filter(i=>i.status!=='done');
+    return { u, total, done, inProg, testing, todo, donePct, avgProg, undone };
+  }).sort((a,b) => b.total - a.total || a.u.name?.localeCompare(b.u.name));
+
+  const teamTotal  = allItems.length;
+  const teamDone   = allItems.filter(i=>i.status==='done').length;
+  const teamPct    = teamTotal ? Math.round(teamDone/teamTotal*100) : 0;
+  const teamAvgP   = teamTotal ? Math.round(allItems.reduce((s,i)=>s+(i.progress||0),0)/teamTotal) : 0;
+
+  const bar = (pct, color) =>
+    `<div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;min-width:60px">
+       <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:.4s"></div>
+     </div>`;
+
+  content.innerHTML = `
+    <div style="margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="background:var(--white);border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;min-width:220px">
+        <div style="font-size:28px;font-weight:800;color:var(--accent)">${teamPct}%</div>
+        <div>
+          <div style="font-size:12px;color:var(--txt2);margin-bottom:3px">整體團隊完成度</div>
+          ${bar(teamPct,'#36b37e')}
+          <div style="font-size:11px;color:var(--txt2);margin-top:3px">${teamDone} / ${teamTotal} 項已完成</div>
+        </div>
+      </div>
+      <div style="background:var(--white);border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);min-width:160px">
+        <div style="font-size:28px;font-weight:800;color:var(--accent)">${teamAvgP}%</div>
+        <div style="font-size:12px;color:var(--txt2);margin-top:2px">平均任務進度</div>
+      </div>
+      <div style="background:var(--white);border-radius:8px;padding:14px 20px;box-shadow:var(--shadow);min-width:160px">
+        <div style="font-size:28px;font-weight:800;color:var(--accent)">${users.length}</div>
+        <div style="font-size:12px;color:var(--txt2);margin-top:2px">成員總數</div>
+      </div>
+    </div>
+
+    <div class="list-wrap">
+      <table class="list-table" style="table-layout:fixed;width:100%">
+        <colgroup>
+          <col style="width:180px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col style="width:68px"><col><col style="width:54px">
+        </colgroup>
+        <thead><tr>
+          <th>成員</th>
+          <th style="text-align:center">總計</th>
+          <th style="text-align:center;color:#0052cc">進行中</th>
+          <th style="text-align:center;color:#974f0c">測試中</th>
+          <th style="text-align:center;color:#42526e">待處理</th>
+          <th style="text-align:center;color:#006644">已完成</th>
+          <th>整體進度</th>
+          <th style="text-align:right">完成率</th>
+        </tr></thead>
+        <tbody>
+          ${stats.map(({u,total,done,inProg,testing,todo,donePct,avgProg,undone})=>`
+          <tr onclick="showMemberItems('${u.uid}')" style="cursor:pointer">
+            <td>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="user-avatar" style="width:32px;height:32px;font-size:13px;background:${avatarColor(u.name)};flex-shrink:0">${initials(u.name)}</div>
+                <div>
+                  <div style="font-weight:600;font-size:14px">${esc(u.name)}</div>
+                  <div style="font-size:11px;color:var(--txt2)">${esc(u.email||'')}</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center;font-weight:700;font-size:16px">${total}</td>
+            <td style="text-align:center"><span style="font-weight:600;color:${inProg?'#0052cc':'var(--txt2)'}">${inProg}</span></td>
+            <td style="text-align:center"><span style="font-weight:600;color:${testing?'#974f0c':'var(--txt2)'}">${testing}</span></td>
+            <td style="text-align:center"><span style="font-weight:600;color:${todo?'#42526e':'var(--txt2)'}">${todo}</span></td>
+            <td style="text-align:center"><span style="font-weight:600;color:${done?'#006644':'var(--txt2)'}">${done}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                ${bar(avgProg, progressColor(avgProg))}
+                <span style="font-size:12px;color:${progressColor(avgProg)};font-weight:600;width:36px;text-align:right">${avgProg}%</span>
+              </div>
+            </td>
+            <td style="text-align:right;font-weight:700;color:${progressColor(donePct)}">${donePct}%</td>
+          </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="member-items-panel" style="display:none;margin-top:20px"></div>`;
+}
+
+function showMemberItems(uid) {
+  const panel = document.getElementById('member-items-panel');
+  if (!panel) return;
+  const u = S.users[uid];
+  const items = S.allItems.filter(i=>i.assignee===uid||i.assignee2===uid);
+  if (!items.length) { panel.style.display='none'; return; }
+  const statusOrder = {in_progress:0,testing:1,todo:2,done:3};
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="section-header">
+      <h2 style="display:flex;align-items:center;gap:8px">
+        <div class="user-avatar" style="width:24px;height:24px;font-size:11px;background:${avatarColor(u?.name||'')}">
+          ${initials(u?.name||'?')}</div>
+        ${esc(u?.name||uid)} 的任務（${items.length}）
+      </h2>
+    </div>
+    <div class="list-wrap">
+      <table class="list-table" style="table-layout:fixed;width:100%">
+        <colgroup><col style="width:36px"><col style="width:88px"><col><col style="width:108px"><col style="width:80px"><col style="width:80px"></colgroup>
+        <thead><tr><th></th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th></tr></thead>
+        <tbody>
+          ${items.sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9)).map(i=>`
+          <tr onclick="openItemPanel('${i.id}')" style="${i.status==='done'?'opacity:.55':''}">
+            <td style="text-align:center">${typeIcon(i.type)}</td>
+            <td style="color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
+            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.title)}</td>
+            <td>${statusBadge(i.status)}</td>
+            <td>${priorityBadge(i.priority)}</td>
+            <td style="color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
+          </tr>`).join('')}
+        </tbody>
       </table>
     </div>`;
 }
@@ -1107,11 +1264,12 @@ function showView(view, projectId) {
   const content = document.getElementById('content');
   content.dataset.view = view;
 
-  if (view === 'home')     { renderHome(); setTopbar('首頁'); }
-  if (view === 'projects') { renderProjectsList(); setTopbar('所有專案'); }
-  if (view === 'mywork')   { renderMyWork(); }
-  if (view === 'admin')    { renderAdmin(); setTopbar('管理員面板'); }
-  if (view === 'project')  { openProject(projectId); }
+  if (view === 'home')       { renderHome(); setTopbar('首頁'); }
+  if (view === 'projects')   { renderProjectsList(); setTopbar('所有專案'); }
+  if (view === 'mywork')     { renderMyWork(); }
+  if (view === 'memberload') { renderMemberLoad(); }
+  if (view === 'admin')      { renderAdmin(); setTopbar('管理員面板'); }
+  if (view === 'project')    { openProject(projectId); }
 }
 
 function setTopbar(title, actions='') {
@@ -2480,12 +2638,12 @@ document.addEventListener('click', e=>{
 });
 
 function userChip(uid) {
-  if (!uid) return '<span style="color:#6b778c;font-size:12px">—</span>';
+  if (!uid) return '<span style="color:var(--txt2);font-size:14px">—</span>';
   const u = S.users[uid];
   const name = u?.name || uid.substring(0,8);
-  return `<div style="display:flex;align-items:center;gap:5px">
-    <div class="user-avatar" style="width:22px;height:22px;font-size:10px;background:${avatarColor(name)}">${initials(name)}</div>
-    <span style="font-size:12px">${esc(name)}</span>
+  return `<div style="display:flex;align-items:center;gap:8px">
+    <div class="user-avatar" style="width:24px;height:24px;font-size:11px;flex-shrink:0;background:${avatarColor(name)}">${initials(name)}</div>
+    <span style="font-size:14px">${esc(name)}</span>
   </div>`;
 }
 function initials(name) {
