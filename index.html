@@ -338,9 +338,21 @@ table.list-table{font-size:17px}
 .toast-item{font-size:17.5px}
 .empty-state p{font-size:18px}
 .tag{font-size:15px}.hint{font-size:15px}
+/* ===== COMMENT EDIT / CHANGELOG ===== */
+.comment-actions{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
+.comment-edit-wrap{display:none;margin-top:6px}
+.comment-edit-wrap textarea{width:100%;border:2px solid var(--border);border-radius:6px;padding:8px;resize:vertical;min-height:60px;font-family:inherit;font-size:inherit;background:var(--white);color:var(--txt);transition:.2s}
+.comment-edit-wrap textarea:focus{border-color:#0052cc;outline:none}
+.changelog{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
+.changelog-title{font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:4px;letter-spacing:.5px}
+.changelog-entry{font-size:11px;color:var(--txt2);padding:3px 0;border-bottom:1px solid var(--border);line-height:1.4}
+.changelog-entry:last-child{border-bottom:none}
+body[data-theme="dark"] .comment-edit-wrap textarea{background:#0d1117;color:var(--txt);border-color:var(--border)}
+/* ===== LANGUAGE ===== */
+.lang-sec{font-size:.75em;opacity:.6;font-weight:400;margin-left:3px}
 /* ===== COLOR SWATCH PICKER ===== */
-.color-swatch-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;padding:8px 0}
-.color-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:.15s;flex-shrink:0}
+.color-swatch-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:6px;padding:8px 0}
+.color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:.15s;flex-shrink:0}
 .color-swatch:hover{transform:scale(1.15)}
 .color-swatch.selected{border-color:#172b4d;box-shadow:0 0 0 2px #fff,0 0 0 4px #172b4d}
 body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0 0 0 2px #161b22,0 0 0 4px #c9d1d9}
@@ -428,6 +440,24 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
       <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
         <span id="topbar-clock" style="font-size:16px;color:var(--txt2);font-variant-numeric:tabular-nums;white-space:nowrap"></span>
         <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:14px;padding:4px 13px;cursor:pointer;font-size:16px;color:var(--txt2);white-space:nowrap;transition:.15s">🌙 深色</button>
+        <div style="position:relative" id="lang-picker-wrap">
+          <button onclick="toggleLangPicker()" style="background:none;border:1px solid var(--border);border-radius:14px;padding:4px 12px;cursor:pointer;font-size:15px;color:var(--txt2);white-space:nowrap;transition:.15s">🌐</button>
+          <div id="lang-picker" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--white);border:1px solid var(--border);border-radius:10px;padding:14px;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:400">
+            <div style="font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">主要語言</div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-p" value="zh" onchange="applyLangChange()"> 中文</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-p" value="en" onchange="applyLangChange()"> English</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-p" value="vi" onchange="applyLangChange()"> Tiếng Việt</label>
+            </div>
+            <div style="font-size:12px;font-weight:600;color:var(--txt2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">第二語言（雙語）</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-s" value="" onchange="applyLangChange()"> 無 / None</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-s" value="zh" onchange="applyLangChange()"> 中文</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-s" value="en" onchange="applyLangChange()"> English</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="radio" name="lang-s" value="vi" onchange="applyLangChange()"> Tiếng Việt</label>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="content"></div>
@@ -695,141 +725,12 @@ const firebaseConfig = {
 };
 
 // =============================================
-// DEMO MODE — Firebase 未設定時自動使用 localStorage
+// FIREBASE INIT
 // =============================================
-const DEMO_MODE = firebaseConfig.apiKey === "YOUR_API_KEY";
-let auth, db, FV;
-
-if (DEMO_MODE) {
-  console.log('%c⚡ Quality COE Project Flow — 本機 Demo 模式（資料儲存於 localStorage）', 'color:#0052cc;font-weight:bold;font-size:14px');
-
-  // ---- FieldValue mock ----
-  FV = {
-    serverTimestamp: () => ({ _fv:'ts' }),
-    arrayUnion: (...els) => ({ _fv:'union', _els:els }),
-    arrayRemove: (...els) => ({ _fv:'remove', _els:els }),
-  };
-
-  // ---- LocalStore helpers ----
-  const _ls = { _cbs:{} };
-  function _getCol(n){ try{ return JSON.parse(localStorage.getItem('pf_'+n)||'{}'); }catch{ return {}; } }
-  function _saveCol(n,d){ localStorage.setItem('pf_'+n,JSON.stringify(d)); (_ls._cbs[n]||[]).forEach(f=>f()); }
-  function _uid(){ return '_'+Math.random().toString(36).slice(2)+Date.now().toString(36); }
-  function _fvProc(data, ex={}){
-    const r={};
-    for(const [k,v] of Object.entries(data)){
-      if(v&&v._fv==='ts')     r[k]={seconds:Math.floor(Date.now()/1000)};
-      else if(v&&v._fv==='union')  r[k]=[...new Set([...(ex[k]||[]),...v._els])];
-      else if(v&&v._fv==='remove') r[k]=(ex[k]||[]).filter(x=>!v._els.includes(x));
-      else r[k]=v;
-    }
-    return r;
-  }
-  function _snap(docs){ return {docs:docs.map(([id,data])=>({id,exists:true,data:()=>data}))}; }
-  function _query(n,ws,ord,lim){
-    let docs=Object.entries(_getCol(n));
-    for(const {f,op,v} of ws){
-      docs=docs.filter(([,d])=>{
-        const val=d[f];
-        if(op==='==') return val===v;
-        if(op==='array-contains') return Array.isArray(val)&&val.includes(v);
-        return true;
-      });
-    }
-    if(ord){ docs.sort(([,a],[,b])=>{let av=a[ord.f],bv=b[ord.f]; if(av?.seconds)av=av.seconds; if(bv?.seconds)bv=bv.seconds; return av<bv?(ord.d==='asc'?-1:1):av>bv?(ord.d==='asc'?1:-1):0;}); }
-    if(lim) docs=docs.slice(0,lim);
-    return docs;
-  }
-
-  function localCol(n,ws=[],ord=null,lim=null){
-    return {
-      where(f,op,v){ return localCol(n,[...ws,{f,op,v}],ord,lim); },
-      orderBy(f,d='asc'){ return localCol(n,ws,{f,d},lim); },
-      limit(x){ return localCol(n,ws,ord,x); },
-      async get(){ return _snap(_query(n,ws,ord,lim)); },
-      onSnapshot(cb){
-        const notify=()=>cb(_snap(_query(n,ws,ord,lim)));
-        notify();
-        if(!_ls._cbs[n]) _ls._cbs[n]=[];
-        _ls._cbs[n].push(notify);
-        return ()=>{ _ls._cbs[n]=_ls._cbs[n].filter(f=>f!==notify); };
-      },
-      async add(data){ const id=_uid(); const c=_getCol(n); c[id]=_fvProc(data); _saveCol(n,c); return {id}; },
-      doc(id){ return localDoc(n,id||_uid()); },
-    };
-  }
-
-  function localDoc(n,id){
-    return {
-      _id:id,
-      _getData(){ return _getCol(n)[id]||null; },
-      async get(){ const d=this._getData(); return {id,exists:d!==null,data:()=>d||{}}; },
-      async set(data){ const c=_getCol(n); c[id]=_fvProc(data); _saveCol(n,c); },
-      async update(data){ const c=_getCol(n); const ex=c[id]||{}; c[id]={...ex,..._fvProc(data,ex)}; _saveCol(n,c); },
-      _updateSync(data){ const c=_getCol(n); const ex=c[id]||{}; c[id]={...ex,..._fvProc(data,ex)}; _saveCol(n,c); },
-      _setSync(data){ const c=_getCol(n); c[id]=_fvProc(data); _saveCol(n,c); },
-      async delete(){ const c=_getCol(n); delete c[id]; _saveCol(n,c); },
-    };
-  }
-
-  db = {
-    collection:(n)=>localCol(n),
-    runTransaction: async (fn)=>fn({
-      get: async(ref)=>ref.get(),
-      update:(ref,data)=>ref._updateSync(data),
-      set:(ref,data)=>ref._setSync(data),
-    }),
-  };
-
-  // ---- LocalAuth ----
-  const _acbs=[];
-  let _cu=null;
-  try{ _cu=JSON.parse(localStorage.getItem('pf_auth')||'null'); }catch{}
-  auth = {
-    onAuthStateChanged(cb){ _acbs.push(cb); setTimeout(()=>cb(_cu),0); return ()=>{ _acbs.splice(_acbs.indexOf(cb),1); }; },
-    async signInWithEmailAndPassword(email,pass){
-      // 使用獨立 key pf_credentials，避免與 firestore users collection 衝突
-      const creds=JSON.parse(localStorage.getItem('pf_credentials')||'{}');
-      const found=Object.entries(creds).find(([,u])=>u.email===email&&u._pw===pass);
-      if(!found) throw {code:'auth/user-not-found'};
-      _cu={uid:found[0],email};
-      localStorage.setItem('pf_auth',JSON.stringify(_cu));
-      _acbs.forEach(cb=>cb(_cu));
-    },
-    async createUserWithEmailAndPassword(email,pass){
-      const creds=JSON.parse(localStorage.getItem('pf_credentials')||'{}');
-      if(Object.values(creds).find(u=>u.email===email)) throw {code:'auth/email-already-in-use'};
-      const uid='u_'+Math.random().toString(36).slice(2);
-      creds[uid]={email,_pw:pass};
-      localStorage.setItem('pf_credentials',JSON.stringify(creds));
-      _cu={uid,email};
-      localStorage.setItem('pf_auth',JSON.stringify(_cu));
-      // 延遲觸發，讓 register() 有時間先存完 profile doc
-      setTimeout(()=>_acbs.forEach(cb=>cb(_cu)), 0);
-      return {user:_cu};
-    },
-    async signOut(){
-      _cu=null;
-      localStorage.removeItem('pf_auth');
-      _acbs.forEach(cb=>cb(null));
-    },
-  };
-
-  // Demo mode banner
-  window.addEventListener('DOMContentLoaded', ()=>{
-    const banner = document.createElement('div');
-    banner.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#0052cc;color:#fff;text-align:center;padding:6px;font-size:12px;z-index:9999';
-    banner.innerHTML='⚡ <strong>Demo 模式</strong>　資料儲存於此瀏覽器的 localStorage，填入 Firebase 設定後正式上線';
-    document.body.appendChild(banner);
-  });
-
-} else {
-  // ---- Real Firebase ----
-  firebase.initializeApp(firebaseConfig);
-  auth = firebase.auth();
-  db   = firebase.firestore();
-  FV   = firebase.firestore.FieldValue;
-}
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+const FV   = firebase.firestore.FieldValue;
 
 // =============================================
 // STATE
@@ -875,52 +776,26 @@ async function login() {
   const input = document.getElementById('login-name').value.trim();
   const pass  = document.getElementById('login-password').value;
   if (!input || !pass) return showAuthError('請填寫帳號和密碼');
-
   const isEmail = input.includes('@');
   try {
     let email;
-
-    if (DEMO_MODE) {
-      const col   = JSON.parse(localStorage.getItem('pf_users')       || '{}');
-      const creds = JSON.parse(localStorage.getItem('pf_credentials') || '{}');
-      let foundUid;
-      if (isEmail) {
-        // 用 email 找 uid
-        const r = Object.entries(creds).find(([, u]) => u.email === input);
-        if (!r) throw { code: 'auth/user-not-found' };
-        foundUid = r[0];
-      } else {
-        // 用帳號名找 uid
-        const r = Object.entries(col).find(([, u]) => u.name === input);
-        if (!r) throw { code: 'auth/user-not-found' };
-        foundUid = r[0];
-      }
-      const cred = creds[foundUid];
-      if (!cred) throw { code: 'auth/user-not-found' };
-      email = cred.email;
-
+    if (isEmail) {
+      email = input;
     } else {
-      if (isEmail) {
-        // 直接用 email 登入
-        email = input;
-      } else {
-        // 帳號名登入：先查快取，再查 Firestore
-        email = getCachedEmail(input);
-        if (!email) {
-          try {
-            const snap = await db.collection('users').where('name','==',input).limit(1).get();
-            if (snap.empty) throw { code: 'auth/user-not-found' };
-            email = snap.docs[0].data().email;
-            cacheNameEmail(input, email);
-          } catch(e) {
-            if (e.code) throw e;
-            showAuthError('查詢帳號失敗：請先用 Email 格式登入一次，或更新 Firestore 安全規則');
-            return;
-          }
+      email = getCachedEmail(input);
+      if (!email) {
+        try {
+          const snap = await db.collection('users').where('name','==',input).limit(1).get();
+          if (snap.empty) throw { code: 'auth/user-not-found' };
+          email = snap.docs[0].data().email;
+          cacheNameEmail(input, email);
+        } catch(e) {
+          if (e.code) throw e;
+          showAuthError('查詢帳號失敗：請先用 Email 格式登入一次');
+          return;
         }
       }
     }
-
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
     showAuthError(translateAuthError(e.code));
@@ -978,27 +853,13 @@ const ADMIN_PASS  = '1QAZWSX';
 async function seedAdminAccount() {
   if (localStorage.getItem('pf_admin_seeded')) return;
   try {
-    if (DEMO_MODE) {
-      const creds = JSON.parse(localStorage.getItem('pf_credentials')||'{}');
-      if (!Object.values(creds).find(u=>u.email===ADMIN_EMAIL)) {
-        const uid = 'admin_fixed_uid';
-        creds[uid] = { email:ADMIN_EMAIL, _pw:ADMIN_PASS };
-        localStorage.setItem('pf_credentials', JSON.stringify(creds));
-        const col = JSON.parse(localStorage.getItem('pf_users')||'{}');
-        col[uid] = { name:'Admin', email:ADMIN_EMAIL, role:'admin', createdAt:{seconds:Math.floor(Date.now()/1000)} };
-        localStorage.setItem('pf_users', JSON.stringify(col));
-      }
-      localStorage.setItem('pf_admin_seeded','1');
-    } else {
-      // Firebase：建立管理員帳號，再立刻登出
-      const cred = await auth.createUserWithEmailAndPassword(ADMIN_EMAIL, ADMIN_PASS);
-      await db.collection('users').doc(cred.user.uid).set({
-        name:'Admin', email:ADMIN_EMAIL, role:'admin',
-        createdAt: FV.serverTimestamp()
-      });
-      await auth.signOut();
-      localStorage.setItem('pf_admin_seeded','1');
-    }
+    const cred = await auth.createUserWithEmailAndPassword(ADMIN_EMAIL, ADMIN_PASS);
+    await db.collection('users').doc(cred.user.uid).set({
+      name:'Admin', email:ADMIN_EMAIL, role:'admin',
+      createdAt: FV.serverTimestamp()
+    });
+    await auth.signOut();
+    localStorage.setItem('pf_admin_seeded','1');
   } catch(e) {
     if (e.code==='auth/email-already-in-use') localStorage.setItem('pf_admin_seeded','1');
   }
@@ -1246,7 +1107,7 @@ function renderHome() {
             <div class="stat"><div class="stat-num">${countStatus(p.id,'in_progress')}</div><div class="stat-lbl">進行中</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'done')}</div><div class="stat-lbl">完成</div></div>
           </div>
-          ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px;cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>整體進度</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
+          ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px;cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
       <div class="project-card project-card-add" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openCreateProjectModal()">
         <div style="text-align:center;color:#6b778c" class="add-label"><div style="font-size:28px">+</div><div style="font-size:13px;margin-top:4px">建立新專案</div></div>
@@ -1302,7 +1163,7 @@ function renderProjectsList() {
           </div>
           <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
           <div style="font-size:12px;color:#6b778c;cursor:pointer;margin-bottom:8px" onclick="showView('project','${p.id}')">成員：${(p.members||[]).length} 人</div>
-          ${(()=>{const pct=projectProgress(p.id);return `<div style="cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>整體進度</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
+          ${(()=>{const pct=projectProgress(p.id);return `<div style="cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
     </div>`;
   document.getElementById('content').dataset.view='projects';
@@ -1363,6 +1224,78 @@ function renderProjectContent() {
 // =============================================
 // BOARD VIEW
 // =============================================
+// =============================================
+// I18N — Bilingual support (zh / en / vi)
+// =============================================
+const TRANS = {
+  en: {
+    '首頁':'Home','所有專案':'All Projects','我的工作':'My Work','我的專案':'My Projects','管理員面板':'Admin Panel','登出':'Sign Out',
+    '待處理':'To Do','進行中':'In Progress','測試中':'Testing','完成':'Done',
+    '最高':'Highest','高':'High','中':'Medium','低':'Low','最低':'Lowest',
+    '任務':'Task','錯誤':'Bug','功能':'Feature','問題':'Issue',
+    '說明':'Description','詳細資訊':'Details','連結項目':'Linked Items','留言':'Comments','進度':'Progress',
+    '狀態':'Status','優先度':'Priority','類型':'Type','截止日期':'Due Date',
+    '指派給':'Assignee','回報者':'Reporter','建立時間':'Created','更新時間':'Updated',
+    '整體進度':'Overall Progress','無連結':'No links','無留言':'No comments',
+    '建立新專案':'Create New Project','指派給我的任務':'My Assigned Tasks','修改記錄':'Edit History',
+    '+ 建立':'+ Create','+ 新增專案':'+ New Project','+ 新增連結':'+ Add Link',
+    '↓ 匯出':'↓ Export','↑ 匯入':'↑ Import','← 返回':'← Back','成員':'Members',
+    '點擊新增說明':'Click to add description','新增留言…':'Add a comment…',
+    '已編輯':'(edited)','確定要刪除這則留言？':'Delete this comment?',
+  },
+  vi: {
+    '首頁':'Trang chủ','所有專案':'Tất cả dự án','我的工作':'Việc của tôi','我的專案':'Dự án của tôi','管理員面板':'Bảng quản trị','登出':'Đăng xuất',
+    '待處理':'Chờ xử lý','進行中':'Đang tiến hành','測試中':'Đang kiểm tra','完成':'Hoàn thành',
+    '最高':'Cao nhất','高':'Cao','中':'Trung bình','低':'Thấp','最低':'Thấp nhất',
+    '任務':'Nhiệm vụ','錯誤':'Lỗi','功能':'Tính năng','問題':'Vấn đề',
+    '說明':'Mô tả','詳細資訊':'Chi tiết','連結項目':'Liên kết','留言':'Bình luận','進度':'Tiến độ',
+    '狀態':'Trạng thái','優先度':'Ưu tiên','類型':'Loại','截止日期':'Hạn chót',
+    '指派給':'Được giao','回報者':'Người báo','建立時間':'Ngày tạo','更新時間':'Cập nhật',
+    '整體進度':'Tiến độ tổng','無連結':'Không có liên kết','無留言':'Không có bình luận',
+    '建立新專案':'Tạo dự án mới','指派給我的任務':'Việc được giao','修改記錄':'Lịch sử sửa',
+    '+ 建立':'+ Tạo','+ 新增專案':'+ Thêm dự án','+ 新增連結':'+ Thêm liên kết',
+    '↓ 匯出':'↓ Xuất','↑ 匯入':'↑ Nhập','← 返回':'← Quay lại','成員':'Thành viên',
+    '點擊新增說明':'Nhấn để thêm mô tả','新增留言…':'Thêm bình luận…',
+    '已編輯':'(đã sửa)','確定要刪除這則留言？':'Xóa bình luận này?',
+  }
+};
+let LANG = (()=>{ try{ return JSON.parse(localStorage.getItem('pf_lang')||'null')||{p:'zh',s:null}; }catch{ return{p:'zh',s:null}; } })();
+function t(str) {
+  const {p,s} = LANG;
+  const primary = p==='zh' ? str : (TRANS[p]?.[str]||str);
+  if (!s || s===p) return primary;
+  const sec = s==='zh' ? str : (TRANS[s]?.[str]||'');
+  if (!sec||sec===primary) return primary;
+  return `${primary}<span class="lang-sec">${sec}</span>`;
+}
+function tPlain(str) { return t(str).replace(/<[^>]+>/g,''); }
+function saveLang() { localStorage.setItem('pf_lang',JSON.stringify(LANG)); }
+function applyLangChange() {
+  const p = document.querySelector('input[name="lang-p"]:checked')?.value||'zh';
+  const s = document.querySelector('input[name="lang-s"]:checked')?.value||null;
+  LANG = {p, s:s||null};
+  saveLang();
+  // re-render current view
+  const view = document.getElementById('content')?.dataset?.view;
+  if (view==='home') renderHome();
+  else if (view==='projects') renderProjectsList();
+  else if (view==='board') renderBoard();
+  else if (view==='list') renderList();
+  else if (view==='mywork') renderMyWork();
+  if (S.panelItem) renderPanel();
+  if (S.currentProject) renderProjectTopbar();
+}
+function toggleLangPicker() {
+  const p = document.getElementById('lang-picker');
+  if (!p) return;
+  const open = p.style.display!=='none';
+  p.style.display = open?'none':'block';
+  if (!open) {
+    document.querySelectorAll('input[name="lang-p"]').forEach(r=>{ r.checked=r.value===LANG.p; });
+    document.querySelectorAll('input[name="lang-s"]').forEach(r=>{ r.checked=r.value===(LANG.s||''); });
+  }
+}
+
 const STATUSES = [
   { key:'todo',        label:'待處理',  cls:'badge-todo' },
   { key:'in_progress', label:'進行中',  cls:'badge-progress' },
@@ -1377,7 +1310,7 @@ function renderBoard() {
       const colItems = S.items.filter(i=>i.status===st.key);
       return `<div class="board-col" data-status="${st.key}" ondragover="ev.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropItem(event,'${st.key}')">
         <div class="board-col-header">
-          <span class="board-col-title">${st.label}</span>
+          <span class="board-col-title">${t(st.label)}</span>
           <span class="board-col-count">${colItems.length}</span>
         </div>
         <div class="board-col-items" id="col-${st.key}">
@@ -1580,14 +1513,14 @@ async function renderPanel() {
       <span class="link-key" onclick="openItemPanel('${l.targetId}')">${esc(l.targetKey)}</span>
       <span style="color:var(--txt2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.targetTitle||'')}</span>
       ${l.isReverse ? '' : `<button class="btn btn-ghost btn-sm" onclick="removeLink('${item.id}','${l.targetId}')" title="移除連結">×</button>`}
-    </div>`).join('') : '<div style="color:var(--txt2);font-size:15px">無連結</div>';
+    </div>`).join('') : `<div style="color:var(--txt2);font-size:15px">${t('無連結')}</div>`;
 
   document.getElementById('panel-body').innerHTML = `
     <input class="panel-title-input" id="panel-title-inp" value="${esc(item.title)}" onblur="savePanelField('title',this.value)">
 
     <div class="panel-section">
-      <div class="panel-section-title">說明</div>
-      <div class="panel-desc" id="panel-desc" onclick="editDesc()" contenteditable="false">${esc(item.description||'（點擊新增說明）')}</div>
+      <div class="panel-section-title">${t('說明')}</div>
+      <div class="panel-desc" id="panel-desc" onclick="editDesc()" contenteditable="false">${esc(item.description||tPlain('點擊新增說明'))}</div>
       <div id="panel-desc-actions" style="display:none;margin-top:6px;display:none">
         <button class="btn btn-primary btn-sm" onclick="saveDesc()">儲存</button>
         <button class="btn btn-secondary btn-sm" onclick="cancelDesc()">取消</button>
@@ -1595,48 +1528,48 @@ async function renderPanel() {
     </div>
 
     <div class="panel-section">
-      <div class="panel-section-title">詳細資訊</div>
+      <div class="panel-section-title">${t('詳細資訊')}</div>
       <div class="meta-grid">
         <div class="meta-item">
-          <div class="meta-label">狀態</div>
+          <div class="meta-label">${t('狀態')}</div>
           <select class="meta-select" onchange="savePanelField('status',this.value)">
-            ${STATUSES.map(s=>`<option value="${s.key}" ${item.status===s.key?'selected':''}>${s.label}</option>`).join('')}
+            ${STATUSES.map(s=>`<option value="${s.key}" ${item.status===s.key?'selected':''}>${tPlain(s.label)}</option>`).join('')}
           </select>
         </div>
         <div class="meta-item">
-          <div class="meta-label">優先度</div>
+          <div class="meta-label">${t('優先度')}</div>
           <select class="meta-select" onchange="savePanelField('priority',this.value)">
             ${['highest','high','medium','low','lowest'].map(p=>`<option value="${p}" ${item.priority===p?'selected':''}>${priorityLabel(p)}</option>`).join('')}
           </select>
         </div>
         <div class="meta-item">
-          <div class="meta-label">類型</div>
+          <div class="meta-label">${t('類型')}</div>
           <select class="meta-select" onchange="savePanelField('type',this.value)">
-            ${['task','bug','feature','issue'].map(t=>`<option value="${t}" ${item.type===t?'selected':''}>${typeLabel(t)}</option>`).join('')}
+            ${['task','bug','feature','issue'].map(tp=>`<option value="${tp}" ${item.type===tp?'selected':''}>${typeLabel(tp)}</option>`).join('')}
           </select>
         </div>
         <div class="meta-item">
-          <div class="meta-label">截止日期</div>
+          <div class="meta-label">${t('截止日期')}</div>
           <input type="date" class="meta-select" value="${item.dueDate||''}" onchange="savePanelField('dueDate',this.value)">
         </div>
         <div class="meta-item">
-          <div class="meta-label">指派給</div>
+          <div class="meta-label">${t('指派給')}</div>
           ${renderAvatarSelect(item.assignee, projectUsers)}
         </div>
         <div class="meta-item">
-          <div class="meta-label">回報者</div>
+          <div class="meta-label">${t('回報者')}</div>
           <div class="meta-value">${userChip(item.reporter)}</div>
         </div>
         <div class="meta-item">
-          <div class="meta-label">建立時間</div>
+          <div class="meta-label">${t('建立時間')}</div>
           <div class="meta-value" style="color:var(--txt2)">${formatTs(item.createdAt)}</div>
         </div>
         <div class="meta-item">
-          <div class="meta-label">更新時間</div>
+          <div class="meta-label">${t('更新時間')}</div>
           <div class="meta-value" style="color:var(--txt2)">${formatTs(item.updatedAt)}</div>
         </div>
         <div class="meta-item" style="grid-column:1/-1">
-          <div class="meta-label">進度</div>
+          <div class="meta-label">${t('進度')}</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
             <input type="number" id="panel-progress" class="meta-select" style="width:72px;text-align:center" min="0" max="100"
               value="${item.progress||0}"
@@ -1653,31 +1586,50 @@ async function renderPanel() {
 
     <div class="panel-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="panel-section-title" style="margin-bottom:0">連結項目</div>
-        <button class="btn btn-secondary btn-sm" onclick="openLinkModal()">+ 新增連結</button>
+        <div class="panel-section-title" style="margin-bottom:0">${t('連結項目')}</div>
+        <button class="btn btn-secondary btn-sm" onclick="openLinkModal()">${t('+ 新增連結')}</button>
       </div>
       ${linkHtml}
     </div>
 
     <div class="panel-section">
-      <div class="panel-section-title">留言（${comments.length}）</div>
-      ${comments.map(c=>`
-        <div class="comment-item">
+      <div class="panel-section-title">${t('留言')}（${comments.length}）</div>
+      ${comments.map(c=>{
+        const canEdit = c.authorId===S.user.uid || S.profile?.role==='admin';
+        const edits = (c.edits||[]).slice().reverse();
+        return `<div class="comment-item" id="ci-${c.id}">
           <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(getUserName(c.authorId))};flex-shrink:0">${initials(getUserName(c.authorId))}</div>
-          <div class="comment-content">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div class="comment-content" style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
               <span class="comment-author">${esc(getUserName(c.authorId))}</span>
               <span class="comment-time">${formatTs(c.createdAt)}</span>
+              ${c.editedAt?`<span class="comment-time">${t('已編輯')}</span>`:''}
+              ${canEdit?`<div class="comment-actions">
+                <button class="btn btn-ghost btn-sm" onclick="startEditComment('${c.id}')" title="編輯">✏️</button>
+                <button class="btn btn-ghost btn-sm" onclick="deleteComment('${c.id}')" title="刪除">🗑</button>
+              </div>`:''}
             </div>
-            <div class="comment-text">${esc(c.content)}</div>
+            <div id="comment-text-${c.id}" class="comment-text">${esc(c.content)}</div>
+            <div id="comment-edit-wrap-${c.id}" class="comment-edit-wrap">
+              <textarea id="comment-edit-inp-${c.id}" rows="3">${esc(c.content)}</textarea>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="btn btn-primary btn-sm" onclick="saveEditComment('${c.id}')">儲存</button>
+                <button class="btn btn-secondary btn-sm" onclick="cancelEditComment('${c.id}')">取消</button>
+              </div>
+            </div>
+            ${edits.length?`<div class="changelog">
+              <div class="changelog-title">${t('修改記錄')}</div>
+              ${edits.map(e=>`<div class="changelog-entry"><span style="margin-right:8px;font-style:italic">${(e.editedAt||'').substring(0,16).replace('T',' ')}</span>${esc(e.content)}</div>`).join('')}
+            </div>`:''}
           </div>
-        </div>`).join('')}
-      <div class="comment-input-wrap">
+        </div>`;
+      }).join('')}
+      <div class="comment-input-wrap" style="margin-top:12px">
         <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(S.profile?.name||'')};flex-shrink:0">${initials(S.profile?.name||'')}</div>
-        <div style="flex:1">
-          <textarea id="comment-input" placeholder="新增留言…" rows="2"></textarea>
+        <div style="flex:1;min-width:0">
+          <textarea id="comment-input" placeholder="${tPlain('新增留言…')}" rows="3" style="width:100%"></textarea>
           <div style="margin-top:6px">
-            <button class="btn btn-primary btn-sm" onclick="addComment()">留言</button>
+            <button class="btn btn-primary btn-sm" onclick="addComment()">${t('留言')}</button>
           </div>
         </div>
       </div>
@@ -1750,6 +1702,34 @@ async function addComment() {
     createdAt: FV.serverTimestamp()
   });
   input.value = '';
+  renderPanel();
+}
+function startEditComment(id) {
+  document.getElementById(`comment-text-${id}`).style.display = 'none';
+  document.getElementById(`comment-edit-wrap-${id}`).style.display = 'block';
+  document.getElementById(`comment-edit-inp-${id}`).focus();
+}
+function cancelEditComment(id) {
+  document.getElementById(`comment-text-${id}`).style.display = '';
+  document.getElementById(`comment-edit-wrap-${id}`).style.display = 'none';
+}
+async function saveEditComment(id) {
+  const inp = document.getElementById(`comment-edit-inp-${id}`);
+  const newContent = inp?.value.trim();
+  if (!newContent) return;
+  const snap = await db.collection('comments').doc(id).get();
+  const old = snap.data()?.content || '';
+  const now = new Date().toISOString();
+  await db.collection('comments').doc(id).update({
+    content: newContent,
+    editedAt: now,
+    edits: FV.arrayUnion({ content: old, editedAt: now })
+  });
+  renderPanel();
+}
+async function deleteComment(id) {
+  if (!confirm(tPlain('確定要刪除這則留言？'))) return;
+  await db.collection('comments').doc(id).delete();
   renderPanel();
 }
 
@@ -1894,10 +1874,16 @@ function openEditProject(projectId) {
 }
 
 const PROJECT_COLORS = [
-  '#0052cc','#0065ff','#00b8d9','#00c7e6',
-  '#36b37e','#00875a','#57d9a3','#006644',
-  '#ff5630','#de350b','#ff8b00','#ffab00',
-  '#6554c0','#8777d9','#403294','#5e6c84',
+  '#0052cc','#0065ff','#1565c0','#1976d2','#2196f3',
+  '#0288d1','#0097a7','#00acc1','#00bcd4','#00b8d9',
+  '#00875a','#2e7d32','#388e3c','#43a047','#36b37e',
+  '#00897b','#00695c','#26a69a','#4db6ac','#009688',
+  '#c62828','#b71c1c','#d32f2f','#e53935','#ff5630',
+  '#e65100','#ef6c00','#f57c00','#ff8b00','#ffab00',
+  '#4527a0','#512da8','#5e35b1','#6554c0','#7b1fa2',
+  '#8777d9','#9c27b0','#7e57c2','#673ab7','#ab47bc',
+  '#880e4f','#ad1457','#c2185b','#e91e63','#d81b60',
+  '#37474f','#455a64','#546e7a','#344563','#5e6c84',
 ];
 function renderColorSwatches(selected) {
   const grid = document.getElementById('proj-color-grid');
@@ -2103,30 +2089,17 @@ async function adminCreateMember() {
   if (pass.length < 6) { toast('密碼至少 6 位','error'); return; }
 
   try {
-    if (DEMO_MODE) {
-      // Demo 模式：直接寫入 localStorage，完全不觸發 auth 狀態變更
-      const creds = JSON.parse(localStorage.getItem('pf_credentials')||'{}');
-      if (Object.values(creds).find(u=>u.email===email)) { toast('此 Email 已被使用','error'); return; }
-      const uid = 'u_' + Math.random().toString(36).slice(2);
-      creds[uid] = { email, _pw: pass };
-      localStorage.setItem('pf_credentials', JSON.stringify(creds));
-      await db.collection('users').doc(uid).set({ name, email, role, createdAt: FV.serverTimestamp() });
-      S.users[uid] = { uid, name, email, role };
-    } else {
-      // Firebase 模式：使用第二個 App 實例，不影響目前的管理員 session
-      const tmpApp = firebase.initializeApp(firebaseConfig, 'tmp_' + Date.now());
-      const tmpAuth = tmpApp.auth();
-      try {
-        const cred = await tmpAuth.createUserWithEmailAndPassword(email, pass);
-        await db.collection('users').doc(cred.user.uid).set({
-          name, email, role, createdAt: FV.serverTimestamp()
-        });
-        // 把 name→email 存入登入快取
-        cacheNameEmail(name, email);
-      } finally {
-        await tmpAuth.signOut().catch(()=>{});
-        await tmpApp.delete().catch(()=>{});
-      }
+    const tmpApp = firebase.initializeApp(firebaseConfig, 'tmp_' + Date.now());
+    const tmpAuth = tmpApp.auth();
+    try {
+      const cred = await tmpAuth.createUserWithEmailAndPassword(email, pass);
+      await db.collection('users').doc(cred.user.uid).set({
+        name, email, role, createdAt: FV.serverTimestamp()
+      });
+      cacheNameEmail(name, email);
+    } finally {
+      await tmpAuth.signOut().catch(()=>{});
+      await tmpApp.delete().catch(()=>{});
     }
     closeModal('modal-invite-admin');
     toast(`帳號已建立：${name}`, 'success');
@@ -2314,23 +2287,23 @@ function typeIcon(type) {
 }
 function typeCell(type) {
   const lbl = { task:'任務', bug:'錯誤', feature:'功能', issue:'問題' };
-  return `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${typeIcon(type)}<span>${lbl[type]||type}</span></span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${typeIcon(type)}<span>${t(lbl[type]||type)}</span></span>`;
 }
 function typeLabel(type) {
-  return { task:'任務', bug:'錯誤', feature:'功能', issue:'問題' }[type]||type;
+  return tPlain({ task:'任務', bug:'錯誤', feature:'功能', issue:'問題' }[type]||type);
 }
 function statusBadge(s) {
   const map={todo:'badge-todo',in_progress:'badge-progress',testing:'badge-testing',done:'badge-done'};
   const lbl={todo:'待處理',in_progress:'進行中',testing:'測試中',done:'完成'};
-  return `<span class="badge ${map[s]||'badge-todo'}">${lbl[s]||s}</span>`;
+  return `<span class="badge ${map[s]||'badge-todo'}">${t(lbl[s]||s)}</span>`;
 }
 function priorityBadge(p) {
   const map={highest:'badge-highest',high:'badge-high',medium:'badge-medium',low:'badge-low',lowest:'badge-lowest'};
   const lbl={highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'};
-  return `<span class="badge ${map[p]||'badge-medium'}">${lbl[p]||p}</span>`;
+  return `<span class="badge ${map[p]||'badge-medium'}">${t(lbl[p]||p)}</span>`;
 }
 function priorityLabel(p) {
-  return {highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'}[p]||p;
+  return tPlain({highest:'最高',high:'高',medium:'中',low:'低',lowest:'最低'}[p]||p);
 }
 function priorityColor(p) {
   return {highest:'#de350b',high:'#ff8b00',medium:'#f59e0b',low:'#36b37e',lowest:'#dfe1e6'}[p]||'#dfe1e6';
@@ -2381,6 +2354,13 @@ async function pickAssignee(uid) {
 }
 
 document.addEventListener('click', closeAllCSelects);
+document.addEventListener('click', e=>{
+  const wrap = document.getElementById('lang-picker-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const picker = document.getElementById('lang-picker');
+    if (picker) picker.style.display = 'none';
+  }
+});
 
 function userChip(uid) {
   if (!uid) return '<span style="color:#6b778c;font-size:12px">—</span>';
