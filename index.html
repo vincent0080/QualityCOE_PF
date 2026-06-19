@@ -120,7 +120,7 @@ body[data-theme="dark"] .project-card-add .add-label{color:var(--txt2) !importan
 #app{display:flex;height:100vh;display:none}
 #sidebar{width:240px;background:var(--sidebar);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 16px;min-height:52px;display:flex;align-items:center;gap:10px;flex-shrink:0;overflow-x:auto}
+#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 16px;min-height:52px;display:flex;align-items:center;gap:10px;flex-shrink:0;overflow:hidden}
 #content{flex:1;overflow-y:auto;padding:24px}
 
 /* ===== SIDEBAR ===== */
@@ -145,7 +145,8 @@ body[data-theme="dark"] .project-card-add .add-label{color:var(--txt2) !importan
 
 /* ===== TOPBAR ===== */
 .topbar-title{font-size:16px;font-weight:600;color:#172b4d;display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap}
-.topbar-actions{display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-shrink:1}
+.topbar-actions{display:flex;align-items:center;gap:8px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.topbar-actions::-webkit-scrollbar{display:none}
 .view-tabs{display:flex;gap:2px;background:#f4f5f7;border-radius:6px;padding:3px}
 .view-tab{padding:5px 14px;border-radius:4px;cursor:pointer;font-size:13px;color:#6b778c;transition:.15s}
 .view-tab.active{background:#fff;color:#172b4d;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.1)}
@@ -435,7 +436,7 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
       <div class="topbar-title" id="topbar-title">首頁</div>
       <div class="topbar-actions" id="topbar-actions"></div>
       <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
-        <span id="topbar-clock" style="font-size:16px;color:var(--txt2);font-variant-numeric:tabular-nums;white-space:nowrap"></span>
+        <span id="topbar-clock" style="font-size:13px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.03em"></span>
         <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border);border-radius:14px;padding:4px 13px;cursor:pointer;font-size:16px;color:var(--txt2);white-space:nowrap;transition:.15s">🌙 深色</button>
         <div style="position:relative" id="lang-picker-wrap">
           <button onclick="toggleLangPicker()" style="background:none;border:1px solid var(--border);border-radius:14px;padding:4px 12px;cursor:pointer;font-size:15px;color:var(--txt2);white-space:nowrap;transition:.15s">🌐</button>
@@ -545,13 +546,17 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
           <select id="item-assignee"><option value="">未指派</option></select>
         </div>
         <div class="form-group">
+          <label>協作成員</label>
+          <select id="item-assignee2"><option value="">無</option></select>
+        </div>
+        <div class="form-group">
           <label>截止日期</label>
           <input type="date" id="item-due">
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label>進度（%）</label>
           <div style="display:flex;align-items:center;gap:10px">
-            <input type="number" id="item-progress" min="0" max="100" value="0" style="width:80px;padding:8px 10px;border:2px solid #dfe1e6;border-radius:4px;font-size:14px" oninput="(function(v){var b=document.getElementById('item-progress-bar');if(b){var p=Math.min(100,Math.max(0,parseInt(v)||0));b.style.width=p+'%';b.style.background=p>=100?'#36b37e':p>=70?'#4c9aff':p>=30?'#ff8b00':'#de350b'}})(this.value)">
+            <input type="number" id="item-progress" min="0" max="100" step="5" value="0" style="width:80px;padding:8px 10px;border:2px solid #dfe1e6;border-radius:4px;font-size:14px" oninput="(function(v){var b=document.getElementById('item-progress-bar');if(b){var p=Math.min(100,Math.max(0,parseInt(v)||0));b.style.width=p+'%';b.style.background=p>=100?'#36b37e':p>=70?'#4c9aff':p>=30?'#ff8b00':'#de350b'}})(this.value)">
             <span style="color:#6b778c">%</span>
             <div style="flex:1;height:8px;background:#ebecf0;border-radius:4px;overflow:hidden">
               <div id="item-progress-bar" style="height:100%;width:0%;background:#4c9aff;border-radius:4px;transition:.2s"></div>
@@ -1005,21 +1010,27 @@ function subscribeProjectItems(projectId) {
 }
 
 function subscribeMyItems() {
-  const unsub = db.collection('items')
-    .where('assignee', '==', S.user.uid)
-    .onSnapshot(snap => {
-      S.myItems = snap.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
-      // merge into allItems so openItemPanel can find them
-      S.myItems.forEach(item => {
-        const idx = S.allItems.findIndex(i=>i.id===item.id);
-        if (idx === -1) S.allItems.push(item);
-        else S.allItems[idx] = item;
-      });
-      updateMyWorkBadge();
-      if (document.getElementById('content').dataset.view === 'mywork') renderMyWork();
+  let _pool1 = [], _pool2 = [];
+  const mergeMyItems = () => {
+    const map = {};
+    [..._pool1, ..._pool2].forEach(i => { map[i.id] = i; });
+    S.myItems = Object.values(map)
+      .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
+    S.myItems.forEach(item => {
+      const idx = S.allItems.findIndex(i=>i.id===item.id);
+      if (idx === -1) S.allItems.push(item);
+      else S.allItems[idx] = item;
     });
-  S.unsubs.push(unsub);
+    updateMyWorkBadge();
+    if (document.getElementById('content').dataset.view === 'mywork') renderMyWork();
+  };
+  const u1 = db.collection('items')
+    .where('assignee', '==', S.user.uid)
+    .onSnapshot(snap => { _pool1 = snap.docs.map(d=>({id:d.id,...d.data()})); mergeMyItems(); });
+  const u2 = db.collection('items')
+    .where('assignee2', '==', S.user.uid)
+    .onSnapshot(snap => { _pool2 = snap.docs.map(d=>({id:d.id,...d.data()})); mergeMyItems(); });
+  S.unsubs.push(u1, u2);
 }
 
 function updateMyWorkBadge() {
@@ -1050,36 +1061,39 @@ function renderMyWork() {
   });
 
   const statusOrder = { in_progress:0, testing:1, todo:2, done:3 };
-  const rows = (pItems) => pItems
+  const itemRows = (pItems) => pItems
     .sort((a,b)=>(statusOrder[a.status]??9)-(statusOrder[b.status]??9))
     .map(i=>`<tr onclick="openItemPanel('${i.id}')" style="${i.status==='done'?'opacity:.55':''}">
-      <td>${typeCell(i.type)}</td>
-      <td style="color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
+      <td style="width:60px">${typeCell(i.type)}</td>
+      <td style="width:90px;color:var(--accent);font-weight:600;white-space:nowrap">${esc(i.key)}</td>
       <td>${esc(i.title)}</td>
-      <td>${statusBadge(i.status)}</td>
-      <td>${priorityBadge(i.priority)}</td>
-      <td style="color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
+      <td style="width:110px">${statusBadge(i.status)}</td>
+      <td style="width:80px">${priorityBadge(i.priority)}</td>
+      <td style="width:80px;color:${dueDateColor(i.dueDate)};white-space:nowrap">${formatDate(i.dueDate)||'—'}</td>
     </tr>`).join('');
 
-  content.innerHTML = Object.entries(byProject).map(([pid, pItems], idx) => {
+  const projectSections = Object.entries(byProject).map(([pid, pItems]) => {
     const proj = S.projects.find(p=>p.id===pid);
     const projName = proj?.name || '未知專案';
     const projColor = proj?.color || '#0052cc';
     const undone = pItems.filter(i=>i.status!=='done').length;
-    return `
-      <div class="section-header" style="${idx>0?'margin-top:28px':''}">
-        <h2 style="display:flex;align-items:center;gap:8px">
-          <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${projColor}"></span>
-          ${esc(projName)}
-          <span style="font-size:14px;font-weight:400;color:var(--txt2)">${undone} 項進行中</span>
-        </h2>
-      </div>
-      <div class="list-wrap" style="margin-bottom:8px">
-        <table class="list-table"><thead><tr>
-          <th>類型</th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
-        </tr></thead><tbody>${rows(pItems)}</tbody></table>
-      </div>`;
+    return `<tr><td colspan="6" style="padding:16px 14px 6px;background:var(--bg);border-bottom:2px solid var(--border);font-weight:600;font-size:14px">
+        <span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${projColor};margin-right:7px;vertical-align:middle"></span>${esc(projName)}<span style="font-size:13px;font-weight:400;color:var(--txt2);margin-left:8px">${undone} 項進行中</span>
+      </td></tr>${itemRows(pItems)}`;
   }).join('');
+
+  content.innerHTML = `
+    <div class="list-wrap">
+      <table class="list-table" style="table-layout:fixed;width:100%">
+        <colgroup>
+          <col style="width:60px"><col style="width:90px"><col><col style="width:110px"><col style="width:80px"><col style="width:80px">
+        </colgroup>
+        <thead><tr>
+          <th>類型</th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
+        </tr></thead>
+        <tbody>${projectSections}</tbody>
+      </table>
+    </div>`;
 }
 
 // =============================================
@@ -1109,7 +1123,7 @@ function setTopbar(title, actions='') {
 // HOME
 // =============================================
 function renderHome() {
-  const myItems = S.items.filter(i=>i.assignee===S.user.uid && i.status!=='done').slice(0,8);
+  const myItems = S.items.filter(i=>(i.assignee===S.user.uid||i.assignee2===S.user.uid) && i.status!=='done').slice(0,8);
   const recentProjects = S.projects.slice(0,6);
 
   document.getElementById('content').innerHTML = `
@@ -1362,6 +1376,7 @@ function progressColor(pct) {
 
 function boardCard(item) {
   const assignee = S.users[item.assignee];
+  const assignee2 = S.users[item.assignee2];
   const pct = Math.min(100, Math.max(0, item.progress || 0));
   const overdue = isOverdue(item);
   return `<div class="board-card${overdue?' card-overdue':''}" draggable="true" data-id="${item.id}" ondragstart="dragItem(event,'${item.id}')" onclick="openItemPanel('${item.id}')" style="border-left-color:${priorityColor(item.priority)}">
@@ -1372,6 +1387,7 @@ function boardCard(item) {
       <div style="display:flex;align-items:center;gap:4px">
         ${item.dueDate?`<span style="font-size:11px;color:${dueDateColor(item.dueDate)}">${formatDate(item.dueDate)}</span>`:''}
         ${assignee?`<div class="user-avatar" style="width:22px;height:22px;font-size:10px;background:${avatarColor(assignee.name)}" title="${esc(assignee.name)}">${initials(assignee.name)}</div>`:''}
+        ${assignee2?`<div class="user-avatar" style="width:22px;height:22px;font-size:10px;background:${avatarColor(assignee2.name)}" title="${esc(assignee2.name)}">${initials(assignee2.name)}</div>`:''}
       </div>
     </div>
     <div style="margin-top:8px">
@@ -1457,7 +1473,7 @@ function renderList() {
                 <span style="font-size:12px;color:${pc};font-weight:600;white-space:nowrap">${pct}%</span>
               </div>
             </td>
-            <td>${userChip(i.assignee)}</td>
+            <td><div style="display:flex;gap:4px;flex-wrap:wrap">${userChip(i.assignee)}${i.assignee2?userChip(i.assignee2):''}</div></td>
             <td style="white-space:nowrap;color:${dueDateColor(i.dueDate)}">${formatDate(i.dueDate)||'—'}</td>
             <td style="white-space:nowrap;color:#6b778c;font-size:12px">${formatTs(i.createdAt)}</td>
             <td>${userChip(i.reporter)}</td>
@@ -1582,6 +1598,10 @@ async function renderPanel() {
           ${renderAvatarSelect(item.assignee, projectUsers)}
         </div>
         <div class="meta-item">
+          <div class="meta-label">協作成員</div>
+          ${renderAvatarSelect2(item.assignee2||'', projectUsers)}
+        </div>
+        <div class="meta-item">
           <div class="meta-label">${t('回報者')}</div>
           <div class="meta-value">${userChip(item.reporter)}</div>
         </div>
@@ -1596,7 +1616,7 @@ async function renderPanel() {
         <div class="meta-item" style="grid-column:1/-1">
           <div class="meta-label">${t('進度')}</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-            <input type="number" id="panel-progress" class="meta-select" style="width:72px;text-align:center" min="0" max="100"
+            <input type="number" id="panel-progress" class="meta-select" style="width:72px;text-align:center" min="0" max="100" step="5"
               value="${item.progress||0}"
               onchange="savePanelField('progress',this.value)">
             <span style="color:var(--txt2)">%</span>
@@ -1779,9 +1799,9 @@ function openCreateItemModal(defaultStatus='todo') {
 
   // populate assignee options
   getProjectUsersOptions(S.currentProject?.id).then(users => {
-    const sel = document.getElementById('item-assignee');
-    sel.innerHTML = '<option value="">未指派</option>' +
-      users.map(u=>`<option value="${u.uid}">${esc(u.name)}</option>`).join('');
+    const opts = users.map(u=>`<option value="${u.uid}">${esc(u.name)}</option>`).join('');
+    document.getElementById('item-assignee').innerHTML = '<option value="">未指派</option>' + opts;
+    document.getElementById('item-assignee2').innerHTML = '<option value="">無</option>' + opts;
   });
   openModal('modal-item');
 }
@@ -1808,6 +1828,7 @@ async function saveItem() {
       status: document.getElementById('item-status').value,
       priority: document.getElementById('item-priority').value,
       assignee: document.getElementById('item-assignee').value,
+      assignee2: document.getElementById('item-assignee2').value,
       reporter: S.user.uid,
       dueDate: document.getElementById('item-due').value,
       progress: Math.min(100, Math.max(0, parseInt(document.getElementById('item-progress').value)||0)),
@@ -2425,6 +2446,30 @@ async function pickAssignee(uid) {
   await savePanelField('assignee', uid);
 }
 
+function renderAvatarSelect2(currentUid, projectUsers) {
+  const cur = projectUsers.find(u=>u.uid===currentUid);
+  const triggerHtml = cur
+    ? `<div class="user-avatar" style="width:24px;height:24px;font-size:11px;flex-shrink:0;background:${avatarColor(cur.name)}">${initials(cur.name)}</div><span>${esc(cur.name)}</span>`
+    : `<span style="color:var(--txt2)">無</span>`;
+  const opts = [
+    `<div class="c-sel-opt${!currentUid?' active':''}" onclick="event.stopPropagation();pickAssignee2('')"><span style="color:var(--txt2)">無</span></div>`,
+    ...projectUsers.map(u=>`
+      <div class="c-sel-opt${currentUid===u.uid?' active':''}" onclick="event.stopPropagation();pickAssignee2('${u.uid}')">
+        <div class="user-avatar" style="width:24px;height:24px;font-size:11px;flex-shrink:0;background:${avatarColor(u.name)}">${initials(u.name)}</div>
+        <span>${esc(u.name)}</span>
+      </div>`)
+  ].join('');
+  return `<div class="c-sel" id="c-sel-assignee2" onclick="event.stopPropagation();toggleCSelect('c-sel-assignee2')">
+    <div class="c-sel-val">${triggerHtml}<span class="c-sel-arrow">▾</span></div>
+    <div class="c-sel-opts">${opts}</div>
+  </div>`;
+}
+
+async function pickAssignee2(uid) {
+  closeAllCSelects();
+  await savePanelField('assignee2', uid);
+}
+
 document.addEventListener('click', closeAllCSelects);
 document.addEventListener('click', e=>{
   const wrap = document.getElementById('lang-picker-wrap');
@@ -2522,6 +2567,12 @@ function handleImportXlsx(input) {
           if (newAssignee !== item.assignee) updates.assignee = newAssignee;
         }
 
+        const raw2 = row['協作成員'] ? String(row['協作成員']).trim() : '';
+        const newAssignee2 = (raw2 && raw2 !== '無') ? (nameToUid[raw2] || null) : '';
+        if (newAssignee2 !== null && newAssignee2 !== (item.assignee2||'')) {
+          updates.assignee2 = newAssignee2;
+        }
+
         // Skip if nothing changed
         if (Object.keys(updates).length === 0) { skipped++; continue; }
 
@@ -2559,6 +2610,7 @@ function exportProjectXlsx() {
     '優先度': priorityMap[i.priority]||i.priority||'',
     '進度(%)': i.progress||0,
     '指派給': getUserName(i.assignee),
+    '協作成員': i.assignee2 ? getUserName(i.assignee2) : '',
     '截止日期': i.dueDate||'',
     '建立時間': formatTs(i.createdAt),
     '更新時間': formatTs(i.updatedAt),
@@ -2566,10 +2618,11 @@ function exportProjectXlsx() {
   const ws = XLSX.utils.json_to_sheet(rows);
   const n = rows.length;
 
+  // Columns: A代號 B類型 C標題 D說明 E狀態 F優先度 G進度 H指派給 I協作成員 J截止日期 K建立時間 L更新時間
   // ── Column widths ──
   ws['!cols'] = [
     {wch:12},{wch:8},{wch:30},{wch:40},{wch:10},{wch:8},
-    {wch:8},{wch:12},{wch:12},{wch:14},{wch:14}
+    {wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}
   ];
 
   // ── Data validation (dropdowns) for editable columns ──
@@ -2579,18 +2632,21 @@ function exportProjectXlsx() {
     { sqref:`E2:E${n+1}`, type:'list', formula1:'"待處理,進行中,測試中,完成"', showDropDown:false, showErrorAlert:true, errorStyle:'stop', error:'請從清單中選擇狀態', errorTitle:'輸入錯誤' },
     { sqref:`F2:F${n+1}`, type:'list', formula1:'"最高,高,中,低,最低"', showDropDown:false, showErrorAlert:true, errorStyle:'stop', error:'請從清單中選擇優先度', errorTitle:'輸入錯誤' },
     { sqref:`G2:G${n+1}`, type:'whole', operator:'between', formula1:'0', formula2:'100', showErrorAlert:true, errorStyle:'stop', error:'請輸入 0–100 之間的整數', errorTitle:'輸入錯誤' },
-    ...(assigneeNames ? [{ sqref:`H2:H${n+1}`, type:'list', formula1:`"${assigneeNames}"`, showDropDown:false, showErrorAlert:true, errorStyle:'warning', error:'請從清單中選擇成員', errorTitle:'輸入提示' }] : []),
+    ...(assigneeNames ? [
+      { sqref:`H2:H${n+1}`, type:'list', formula1:`"${assigneeNames}"`, showDropDown:false, showErrorAlert:true, errorStyle:'warning', error:'請從清單中選擇成員', errorTitle:'輸入提示' },
+      { sqref:`I2:I${n+1}`, type:'list', formula1:`"無,${assigneeNames}"`, showDropDown:false, showErrorAlert:true, errorStyle:'warning', error:'請從清單中選擇成員或留空', errorTitle:'輸入提示' },
+    ] : []),
   ];
 
-  // ── Sheet protection: lock 代號 (col A) and 建立時間 (col J) ──
+  // ── Sheet protection: lock 代號 (col A=0) and 建立時間 (col K=10) ──
   const range = XLSX.utils.decode_range(ws['!ref']);
   for (let r = range.s.r; r <= range.e.r; r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({r, c});
       if (!ws[addr]) ws[addr] = {t:'z'};
       if (!ws[addr].s) ws[addr].s = {};
-      // Unlock editable columns (B–I, K = cols 1–8, 10); lock A and J (cols 0, 9)
-      ws[addr].s.protection = { locked: (c === 0 || c === 9) };
+      // Lock A (代號) and K (建立時間); unlock everything else
+      ws[addr].s.protection = { locked: (c === 0 || c === 10) };
     }
   }
   ws['!protect'] = { password:'', selectLockedCells:true, selectUnlockedCells:true, formatCells:true, formatColumns:true, formatRows:true };
@@ -2599,6 +2655,7 @@ function exportProjectXlsx() {
   XLSX.utils.book_append_sheet(wb, ws, S.currentProject.name.substring(0,31));
 
   // ── "參數說明" reference sheet ──
+  const memberNames = Object.values(S.users).map(u=>u.name||'').filter(Boolean).join(' / ') || '成員名稱';
   const infoData = [
     ['欄位','有效選項 / 說明'],
     ['代號','⚠ 請勿修改（用於比對任務）'],
@@ -2608,7 +2665,8 @@ function exportProjectXlsx() {
     ['狀態','待處理 / 進行中 / 測試中 / 完成'],
     ['優先度','最高 / 高 / 中 / 低 / 最低'],
     ['進度(%)','0 到 100 的整數'],
-    ['指派給', Object.values(S.users).map(u=>u.name||'').filter(Boolean).join(' / ') || '成員名稱'],
+    ['指派給', memberNames],
+    ['協作成員', '（選填）' + memberNames],
     ['截止日期','YYYY-MM-DD 格式'],
     ['建立時間','⚠ 請勿修改'],
     ['更新時間','匯入時自動更新，無需填寫'],
