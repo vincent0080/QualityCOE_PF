@@ -120,7 +120,7 @@ body[data-theme="dark"] .project-card-add .add-label{color:var(--txt2) !importan
 #app{display:flex;height:100vh;display:none}
 #sidebar{width:240px;background:var(--sidebar);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 16px;min-height:52px;display:flex;align-items:center;gap:10px;flex-shrink:0;overflow:hidden}
+#topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 16px;min-height:52px;display:flex;align-items:center;gap:10px;flex-shrink:0;overflow:visible;position:relative;z-index:100}
 #content{flex:1;overflow-y:auto;padding:24px}
 
 /* ===== SIDEBAR ===== */
@@ -1096,7 +1096,7 @@ function renderMyWork() {
     <div class="list-wrap">
       <table class="list-table" style="table-layout:fixed;width:100%">
         <colgroup>
-          <col style="width:36px"><col style="width:88px"><col><col style="width:108px"><col style="width:76px"><col style="width:76px">
+          <col style="width:36px"><col style="width:88px"><col><col style="width:152px"><col style="width:90px"><col style="width:90px">
         </colgroup>
         <thead><tr>
           <th></th><th>代號</th><th>標題</th><th>狀態</th><th>優先度</th><th>截止日期</th>
@@ -1114,6 +1114,12 @@ async function renderMemberLoad() {
   const content = document.getElementById('content');
   content.dataset.view = 'memberload';
   content.innerHTML = '<div class="empty-state"><p>載入中…</p></div>';
+
+  // Fetch all users so non-admin members see everyone's data
+  try {
+    const usersSnap = await db.collection('users').get();
+    usersSnap.docs.forEach(d => { S.users[d.id] = { uid:d.id, ...d.data() }; });
+  } catch(e) { /* use cached S.users */ }
 
   // Fetch all items (all members can read items; fallback to S.allItems if rules restrict)
   let allItems = [];
