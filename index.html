@@ -368,20 +368,16 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
       <p>專案管理系統</p>
     </div>
     <div id="auth-error" class="auth-error"></div>
-    <div class="auth-tabs">
-      <div class="auth-tab active" onclick="switchAuthTab('login')">登入</div>
-      <div class="auth-tab" onclick="switchAuthTab('register')">註冊</div>
-    </div>
     <div id="login-form">
-      <div class="form-group"><label>帳號</label><input type="text" id="login-name" placeholder="輸入帳號名稱"></div>
+      <div class="form-group"><label>帳號</label><input type="text" id="login-name" placeholder="輸入帳號名稱或 Email"></div>
       <div class="form-group"><label>密碼</label><input type="password" id="login-password" placeholder="••••••••"></div>
       <button class="btn btn-primary btn-block" onclick="login()">登入</button>
     </div>
+    <!-- hidden stubs so existing JS refs don't error -->
     <div id="register-form" style="display:none">
-      <div class="form-group"><label>姓名</label><input type="text" id="reg-name" placeholder="你的名字"></div>
-      <div class="form-group"><label>電子郵件</label><input type="email" id="reg-email" placeholder="your@email.com"></div>
-      <div class="form-group"><label>密碼（至少 6 位）</label><input type="password" id="reg-password" placeholder="••••••••"></div>
-      <button class="btn btn-primary btn-block" onclick="register()">建立帳號</button>
+      <input type="text" id="reg-name" style="display:none">
+      <input type="email" id="reg-email" style="display:none">
+      <input type="password" id="reg-password" style="display:none">
     </div>
   </div>
 </div>
@@ -421,12 +417,13 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
       </div>
     </div>
     <div class="sidebar-bottom">
-      <div class="user-info" onclick="showUserMenu()">
+      <div class="user-info" onclick="showUserMenu()" style="cursor:pointer" title="修改密碼 / 管理員設定">
         <div class="user-avatar" id="sidebar-avatar"></div>
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="user-name" id="sidebar-name">載入中…</div>
-          <div class="user-role" id="sidebar-role"></div>
+          <div class="user-role" id="sidebar-role" style="font-size:11px;opacity:.7"></div>
         </div>
+        <span style="color:var(--sidebar-text);font-size:16px;opacity:.5">⚙</span>
       </div>
       <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" onclick="logout()">登出</button>
     </div>
@@ -675,10 +672,37 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
           <option value="admin">管理員</option>
         </select>
       </div>
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+        <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:10px">密碼管理</div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label>設定新密碼（留空則不修改）</label>
+          <input type="password" id="edit-member-newpw" placeholder="至少 6 位">
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="sendMemberPasswordReset()" style="width:100%">寄送密碼重置信給此成員</button>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-edit-member')">取消</button>
       <button class="btn btn-primary" onclick="saveEditMember()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CHANGE OWN PASSWORD MODAL ===== -->
+<div class="modal-overlay" id="modal-change-pw">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h3>修改密碼</h3>
+      <button class="close-btn" onclick="closeModal('modal-change-pw')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>目前密碼</label><input type="password" id="pw-current" placeholder="••••••••"></div>
+      <div class="form-group"><label>新密碼（至少 6 位）</label><input type="password" id="pw-new" placeholder="••••••••"></div>
+      <div class="form-group"><label>確認新密碼</label><input type="password" id="pw-confirm" placeholder="••••••••"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-change-pw')">取消</button>
+      <button class="btn btn-primary" onclick="changeOwnPassword()">確認修改</button>
     </div>
   </div>
 </div>
@@ -1092,22 +1116,22 @@ function renderHome() {
     <div class="section-header"><h2>我的專案</h2><button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button></div>
     <div class="home-grid">
       ${recentProjects.map(p=>`
-        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}">
+        <div class="project-card" style="border-top-color:${p.color||'#0052cc'};cursor:pointer" onclick="showView('project','${p.id}')">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
-            <h3 style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.name)}</h3>
+            <h3>${esc(p.name)}</h3>
             ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
             <div style="display:flex;gap:4px;flex-shrink:0">
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
             </div>`:''}
           </div>
-          <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
-          <div class="project-stats" style="cursor:pointer" onclick="showView('project','${p.id}')">
+          <p>${esc(p.description||'')}</p>
+          <div class="project-stats">
             <div class="stat"><div class="stat-num">${countStatus(p.id,'todo')}</div><div class="stat-lbl">待處理</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'in_progress')}</div><div class="stat-lbl">進行中</div></div>
             <div class="stat"><div class="stat-num">${countStatus(p.id,'done')}</div><div class="stat-lbl">完成</div></div>
           </div>
-          ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px;cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
+          ${(()=>{const pct=projectProgress(p.id);return `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
       <div class="project-card project-card-add" style="border-top-color:#dfe1e6;background:#f4f5f7;display:flex;align-items:center;justify-content:center;min-height:120px" onclick="openCreateProjectModal()">
         <div style="text-align:center;color:#6b778c" class="add-label"><div style="font-size:28px">+</div><div style="font-size:13px;margin-top:4px">建立新專案</div></div>
@@ -1152,18 +1176,18 @@ function renderProjectsList() {
     </div>
     <div class="home-grid">
       ${S.projects.map(p=>`
-        <div class="project-card" style="border-top-color:${p.color||'#0052cc'}">
+        <div class="project-card" style="border-top-color:${p.color||'#0052cc'};cursor:pointer" onclick="showView('project','${p.id}')">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
-            <h3 style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
+            <h3>${esc(p.name)} <span style="font-size:11px;color:#6b778c;font-weight:400">[${esc(p.key)}]</span></h3>
             ${(S.profile?.role==='admin'||p.createdBy===S.user.uid)?`
             <div style="display:flex;gap:4px;flex-shrink:0">
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openEditProject('${p.id}')" title="編輯">✏️</button>
               <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteProject('${p.id}')" title="刪除">🗑</button>
             </div>`:''}
           </div>
-          <p style="cursor:pointer" onclick="showView('project','${p.id}')">${esc(p.description||'')}</p>
-          <div style="font-size:12px;color:#6b778c;cursor:pointer;margin-bottom:8px" onclick="showView('project','${p.id}')">成員：${(p.members||[]).length} 人</div>
-          ${(()=>{const pct=projectProgress(p.id);return `<div style="cursor:pointer" onclick="showView('project','${p.id}')"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
+          <p>${esc(p.description||'')}</p>
+          <div style="font-size:12px;color:#6b778c;margin-bottom:8px">成員：${(p.members||[]).length} 人</div>
+          ${(()=>{const pct=projectProgress(p.id);return `<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#6b778c;margin-bottom:3px"><span>${t('整體進度')}</span><span>${pct}%</span></div><div style="background:#dfe1e6;border-radius:4px;height:5px"><div style="width:${pct}%;height:5px;border-radius:4px;background:${progressColor(pct)};transition:width .3s"></div></div></div>`})()}
         </div>`).join('')}
     </div>`;
   document.getElementById('content').dataset.view='projects';
@@ -1743,6 +1767,9 @@ function openCreateItemModal(defaultStatus='todo') {
   document.getElementById('item-due').value = '';
   document.getElementById('item-type').value = 'task';
   document.getElementById('item-priority').value = 'medium';
+  document.getElementById('item-progress').value = '0';
+  const bar = document.getElementById('item-progress-bar');
+  if (bar) { bar.style.width = '0%'; bar.style.background = '#de350b'; }
   document.getElementById('modal-item-title').textContent = '建立任務';
 
   // populate assignee options
@@ -2045,20 +2072,59 @@ function openEditMember(uid, name, role) {
   document.getElementById('edit-member-uid').value = uid;
   document.getElementById('edit-member-name').value = name;
   document.getElementById('edit-member-role').value = role;
+  document.getElementById('edit-member-newpw').value = '';
   openModal('modal-edit-member');
 }
 
 async function saveEditMember() {
-  const uid  = document.getElementById('edit-member-uid').value;
-  const name = document.getElementById('edit-member-name').value.trim();
-  const role = document.getElementById('edit-member-role').value;
+  const uid   = document.getElementById('edit-member-uid').value;
+  const name  = document.getElementById('edit-member-name').value.trim();
+  const role  = document.getElementById('edit-member-role').value;
+  const newpw = document.getElementById('edit-member-newpw').value;
   if (!name) { toast('請填寫姓名', 'error'); return; }
+  if (newpw && newpw.length < 6) { toast('新密碼至少需要 6 位', 'error'); return; }
   await db.collection('users').doc(uid).update({ name, role });
   if (S.users[uid]) { S.users[uid].name = name; S.users[uid].role = role; }
   if (uid === S.user.uid) { S.profile.name = name; S.profile.role = role; renderSidebar(); }
+  // 若有填寫新密碼且為自己，直接更新；若為他人，使用次要 App 實例
+  if (newpw) {
+    try {
+      if (uid === S.user.uid) {
+        await auth.currentUser.updatePassword(newpw);
+      } else {
+        const userDoc = await db.collection('users').doc(uid).get();
+        const email = userDoc.data()?.email;
+        if (email) {
+          const tmpApp = firebase.initializeApp(firebaseConfig, 'pwreset_' + Date.now());
+          const tmpAuth = tmpApp.auth();
+          try {
+            await tmpAuth.sendPasswordResetEmail(email);
+            toast('密碼重置信已寄出（請請成員確認信箱）', 'success');
+          } finally {
+            await tmpApp.delete().catch(()=>{});
+          }
+        }
+      }
+    } catch(e) {
+      toast('密碼更新失敗：' + (e.code||e.message), 'error');
+    }
+  }
   closeModal('modal-edit-member');
   toast('成員資料已更新', 'success');
   renderAdmin();
+}
+
+async function sendMemberPasswordReset() {
+  const uid = document.getElementById('edit-member-uid').value;
+  const userDoc = await db.collection('users').doc(uid).get();
+  const email = userDoc.data()?.email;
+  if (!email) { toast('找不到此成員的 Email', 'error'); return; }
+  try {
+    await auth.sendPasswordResetEmail(email);
+    toast(`密碼重置信已寄至 ${email}`, 'success');
+  } catch(e) {
+    toast('寄送失敗：' + (e.code||e.message), 'error');
+  }
 }
 
 async function deleteMember(uid, name) {
@@ -2270,6 +2336,7 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 // close on overlay click
 document.querySelectorAll('.modal-overlay').forEach(el=>{
+  if (el.id === 'modal-item') return; // task modal: only close via buttons
   el.addEventListener('click', e=>{ if(e.target===el) el.classList.remove('open'); });
 });
 
@@ -2489,8 +2556,34 @@ function toast(msg, type='info') {
 }
 
 function showUserMenu() {
-  // simple — just navigate to admin or show logout
-  if (S.profile?.role==='admin') showView('admin');
+  if (S.profile?.role === 'admin') {
+    showView('admin');
+  } else {
+    document.getElementById('pw-current').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    openModal('modal-change-pw');
+  }
+}
+
+async function changeOwnPassword() {
+  const current = document.getElementById('pw-current').value;
+  const newPw   = document.getElementById('pw-new').value;
+  const confirm = document.getElementById('pw-confirm').value;
+  if (!current || !newPw) { toast('請填寫所有欄位', 'error'); return; }
+  if (newPw.length < 6)   { toast('新密碼至少需要 6 位', 'error'); return; }
+  if (newPw !== confirm)  { toast('兩次輸入的密碼不一致', 'error'); return; }
+  try {
+    const cred = firebase.auth.EmailAuthProvider.credential(S.user.email, current);
+    await auth.currentUser.reauthenticateWithCredential(cred);
+    await auth.currentUser.updatePassword(newPw);
+    closeModal('modal-change-pw');
+    toast('密碼已成功修改', 'success');
+  } catch(e) {
+    const msg = (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')
+      ? '目前密碼錯誤' : ('修改失敗：' + (e.code || e.message));
+    toast(msg, 'error');
+  }
 }
 
 // enter key on auth forms
