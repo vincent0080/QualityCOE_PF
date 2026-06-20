@@ -2974,9 +2974,24 @@ function handleImportXlsx(input) {
 async function exportProjectXlsx() {
   if (!S.currentProject) { toast('請先選擇一個專案', 'error'); return; }
   if (!S.items.length) { toast('此專案沒有任務可匯出', 'error'); return; }
+
+  // Ensure all users are loaded so assignee names resolve correctly
+  try {
+    const usersSnap = await db.collection('users').get();
+    usersSnap.docs.forEach(d => { S.users[d.id] = { uid:d.id, ...d.data() }; });
+  } catch(e) {}
+
   const statusMap = { todo:'待處理', in_progress:'進行中', testing:'測試中', done:'完成' };
   const priorityMap = { highest:'最高', high:'高', medium:'中', low:'低', lowest:'最低' };
   const typeMap = { task:'任務', bug:'錯誤', feature:'功能', issue:'問題' };
+
+  // Convert Firestore Timestamp or string to YYYY-MM-DD
+  const toDateStr = ts => {
+    if (!ts) return '';
+    const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+    return isNaN(d) ? '' : d.toISOString().substring(0, 10);
+  };
+
   const rows = S.items.map(i => ({
     '代號': i.key||'',
     '類型': typeMap[i.type]||i.type||'',
@@ -2988,8 +3003,8 @@ async function exportProjectXlsx() {
     '指派給': getUserName(i.assignee),
     '協作成員': i.assignee2 ? getUserName(i.assignee2) : '',
     '截止日期': i.dueDate||'',
-    '建立時間': formatTs(i.createdAt),
-    '更新時間': formatTs(i.updatedAt),
+    '建立時間': toDateStr(i.createdAt),
+    '更新時間': toDateStr(i.updatedAt),
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const n = rows.length;
@@ -2999,8 +3014,6 @@ async function exportProjectXlsx() {
     {wch:12},{wch:8},{wch:30},{wch:40},{wch:10},{wch:8},
     {wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}
   ];
-
-  const assigneeNames = Object.values(S.users).map(u=>u.name||'').filter(Boolean).join(',');
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, S.currentProject.name.substring(0,31));
@@ -3027,11 +3040,11 @@ async function exportProjectXlsx() {
   XLSX.utils.book_append_sheet(wb, wsInfo, '參數說明');
 
   const fileName = `${S.currentProject.key}_${S.currentProject.name}.xlsx`;
-  const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const safeNames = Object.values(S.users).map(u=>u.name||'').filter(Boolean)
-    .map(n => n.replace(/,/g,'').trim()).filter(Boolean).join(',');
+    .map(nm => nm.replace(/,/g,'').trim()).filter(Boolean).join(',');
 
-  // ── Build minimal OOXML dataValidations (ASCII-only attributes to avoid encoding edge cases) ──
+  // ── OOXML dataValidations (minimal ASCII-only attributes) ──
   const dvItems = [
     `<dataValidation type="list" sqref="B2:B${n+1}"><formula1>&quot;任務,錯誤,功能,問題&quot;</formula1></dataValidation>`,
     `<dataValidation type="list" sqref="E2:E${n+1}"><formula1>&quot;待處理,進行中,測試中,完成&quot;</formula1></dataValidation>`,
@@ -3040,7 +3053,7 @@ async function exportProjectXlsx() {
   ];
   if (safeNames) {
     dvItems.push(`<dataValidation type="list" sqref="H2:H${n+1}"><formula1>&quot;${xmlEsc(safeNames)}&quot;</formula1></dataValidation>`);
-    dvItems.push(`<dataValidation type="list" sqref="I2:I${n+1}"><formula1>&quot;,${xmlEsc(safeNames)}&quot;</formula1></dataValidation>`);
+    dvItems.push(`<dataValidation type="list" sqref="I2:I${n+1}"><formula1>&quot;無,${xmlEsc(safeNames)}&quot;</formula1></dataValidation>`);
   }
   const dvXml = `<dataValidations count="${dvItems.length}">${dvItems.join('')}</dataValidations>`;
 
@@ -3048,14 +3061,46 @@ async function exportProjectXlsx() {
     if (typeof JSZip === 'undefined') throw new Error('JSZip not loaded');
     const wbBytes = XLSX.write(wb, { bookType:'xlsx', type:'array' });
     const zip = await JSZip.loadAsync(wbBytes);
+
+    // ── styles.xml: add an "unlocked" cell style so editable cells can be edited ──
+    let unlockedIdx = null;
+    const stylesEntry = zip.file('xl/styles.xml');
+    if (stylesEntry) {
+      const sb = await stylesEntry.async('uint8array');
+      let sx = new TextDecoder('utf-8').decode(sb);
+      const m = sx.match(/<cellXfs[^>]*\scount="(\d+)"/);
+      if (m) {
+        unlockedIdx = parseInt(m[1]);
+        sx = sx
+          .replace(/(<cellXfs[^>]*\s)count="\d+"/, `$1count="${unlockedIdx + 1}"`)
+          .replace('</cellXfs>', '<xf xfId="0" applyProtection="1"><protection locked="0"/></xf></cellXfs>');
+        zip.file('xl/styles.xml', new TextEncoder().encode(sx));
+      }
+    }
+
+    // ── sheet1.xml: apply unlocked style to editable columns (B–J, L), then add protection + validations ──
     const sheetEntry = zip.file('xl/worksheets/sheet1.xml');
     if (!sheetEntry) throw new Error('sheet1.xml not found');
-    const rawBytes = await sheetEntry.async('uint8array');
-    let xml = new TextDecoder('utf-8').decode(rawBytes);
-    // Insert dataValidations right after </sheetData> — correct OOXML schema position
-    if (xml.includes('</sheetData>')) {
-      xml = xml.replace('</sheetData>', '</sheetData>' + dvXml);
+    const rb = await sheetEntry.async('uint8array');
+    let xml = new TextDecoder('utf-8').decode(rb);
+
+    // Apply unlocked style to data cells in columns B–J and L (skip header row 1)
+    if (unlockedIdx !== null) {
+      xml = xml.replace(/<c r="([B-JL])(\d+)"([^>]*?)>/g, (match, col, row, attrs) => {
+        if (parseInt(row) < 2) return match;
+        const newAttrs = (/ s="/.test(attrs))
+          ? attrs.replace(/ s="\d+"/, ` s="${unlockedIdx}"`)
+          : (attrs || '') + ` s="${unlockedIdx}"`;
+        return `<c r="${col}${row}"${newAttrs}>`;
+      });
     }
+
+    // Insert sheetProtection (schema order: after sheetData, before dataValidations)
+    const protect = `<sheetProtection sheet="1" selectLockedCells="1" selectUnlockedCells="1"/>`;
+    if (xml.includes('</sheetData>')) {
+      xml = xml.replace('</sheetData>', `</sheetData>${protect}${dvXml}`);
+    }
+
     zip.file('xl/worksheets/sheet1.xml', new TextEncoder().encode(xml));
     const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
     const url = URL.createObjectURL(blob);
