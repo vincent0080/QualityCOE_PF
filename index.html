@@ -789,6 +789,7 @@ let S = {
   projectView: 'board', // board | list
   items: [],
   allItems: [],       // for link search
+  allItemsLoaded: false, // true after first full items fetch (for home counts)
   users: {},          // uid -> profile cache
   panelItem: null,    // item currently in side panel
   linkTarget: null,   // selected item in link modal
@@ -1371,7 +1372,21 @@ function setTopbar(title, actions='') {
 // =============================================
 // HOME
 // =============================================
-function renderHome() {
+async function renderHome() {
+  // On first call after projects load, fetch all items so home-page counts are accurate
+  if (!S.allItemsLoaded && S.projects.length) {
+    S.allItemsLoaded = true;
+    try {
+      const snap = await db.collection('items').get();
+      snap.docs.forEach(d => {
+        const item = {id:d.id,...d.data()};
+        const idx = S.allItems.findIndex(i=>i.id===item.id);
+        if (idx === -1) S.allItems.push(item);
+        else S.allItems[idx] = item;
+      });
+    } catch(e) {}
+  }
+  if (document.getElementById('content')?.dataset.view !== 'home') return;
   const myItems = S.items.filter(i=>(i.assignee===S.user.uid||i.assignee2===S.user.uid) && i.status!=='done').slice(0,8);
   const recentProjects = S.projects.filter(p=>!p.archived).slice(0,6);
   const archivedProjects = S.projects.filter(p=>p.archived);
@@ -1847,12 +1862,11 @@ async function renderPanel() {
 
   // load comments
   const commSnap = await db.collection('comments').where('itemId','==',item.id).get();
-  commSnap.docs.sort((a,b)=>{
-    const ad = a.data(), bd = b.data();
-    if (!!ad.deleted !== !!bd.deleted) return ad.deleted ? 1 : -1;
-    return (ad.createdAt?.seconds||0) - (bd.createdAt?.seconds||0);
-  });
-  const comments = commSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const comments = commSnap.docs.map(d=>({id:d.id,...d.data()}))
+    .sort((a,b) => {
+      if (!!a.deleted !== !!b.deleted) return a.deleted ? 1 : -1;
+      return (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0);
+    });
 
   // load linked items (own links + reverse links from other items)
   const links = item.links || [];
