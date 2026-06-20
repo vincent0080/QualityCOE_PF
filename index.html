@@ -1022,8 +1022,12 @@ function calNav(dir) {
 document.addEventListener('click', function(e) {
   const popup = document.getElementById('calendar-popup');
   const wrap = document.getElementById('cal-wrap');
-  if (popup && wrap && !wrap.contains(e.target) && popup.style.display !== 'none') {
-    popup.style.display = 'none';
+  if (popup && wrap && popup.style.display !== 'none') {
+    // composedPath captures the original path before any DOM mutation (e.g., calNav re-render)
+    const path = e.composedPath ? e.composedPath() : [];
+    if (!path.includes(wrap) && !wrap.contains(e.target)) {
+      popup.style.display = 'none';
+    }
   }
 });
 
@@ -1843,7 +1847,11 @@ async function renderPanel() {
 
   // load comments
   const commSnap = await db.collection('comments').where('itemId','==',item.id).get();
-  commSnap.docs.sort((a,b)=>((a.data().createdAt?.seconds||0)-(b.data().createdAt?.seconds||0)));
+  commSnap.docs.sort((a,b)=>{
+    const ad = a.data(), bd = b.data();
+    if (!!ad.deleted !== !!bd.deleted) return ad.deleted ? 1 : -1;
+    return (ad.createdAt?.seconds||0) - (bd.createdAt?.seconds||0);
+  });
   const comments = commSnap.docs.map(d=>({id:d.id,...d.data()}));
 
   // load linked items (own links + reverse links from other items)
@@ -3023,9 +3031,10 @@ async function exportProjectXlsx() {
     const zip = await JSZip.loadAsync(wbBytes);
     const sheetEntry = zip.file('xl/worksheets/sheet1.xml');
     if (sheetEntry) {
-      let xml = await sheetEntry.async('string');
+      const rawBytes = await sheetEntry.async('uint8array');
+      let xml = new TextDecoder('utf-8').decode(rawBytes);
       xml = xml.replace('</worksheet>', dvXml + '</worksheet>');
-      zip.file('xl/worksheets/sheet1.xml', xml);
+      zip.file('xl/worksheets/sheet1.xml', new TextEncoder().encode(xml));
     }
     const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
     const url = URL.createObjectURL(blob);
