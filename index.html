@@ -3026,30 +3026,37 @@ async function exportProjectXlsx() {
   wsInfo['!cols'] = [{wch:12},{wch:50}];
   XLSX.utils.book_append_sheet(wb, wsInfo, '參數說明');
 
-  // ── Build OOXML dataValidations and inject via JSZip ──
+  const fileName = `${S.currentProject.key}_${S.currentProject.name}.xlsx`;
+  const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const safeNames = Object.values(S.users).map(u=>u.name||'').filter(Boolean)
+    .map(n => n.replace(/,/g,'').trim()).filter(Boolean).join(',');
+
+  // ── Build minimal OOXML dataValidations (ASCII-only attributes to avoid encoding edge cases) ──
   const dvItems = [
-    `<dataValidation type="list" sqref="B2:B${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇類型" errorTitle="輸入錯誤"><formula1>"任務,錯誤,功能,問題"</formula1></dataValidation>`,
-    `<dataValidation type="list" sqref="E2:E${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇狀態" errorTitle="輸入錯誤"><formula1>"待處理,進行中,測試中,完成"</formula1></dataValidation>`,
-    `<dataValidation type="list" sqref="F2:F${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇優先度" errorTitle="輸入錯誤"><formula1>"最高,高,中,低,最低"</formula1></dataValidation>`,
-    `<dataValidation type="whole" operator="between" sqref="G2:G${n+1}" showErrorAlert="1" errorStyle="stop" error="請輸入 0-100 之間的整數" errorTitle="輸入錯誤"><formula1>0</formula1><formula2>100</formula2></dataValidation>`,
+    `<dataValidation type="list" sqref="B2:B${n+1}"><formula1>&quot;任務,錯誤,功能,問題&quot;</formula1></dataValidation>`,
+    `<dataValidation type="list" sqref="E2:E${n+1}"><formula1>&quot;待處理,進行中,測試中,完成&quot;</formula1></dataValidation>`,
+    `<dataValidation type="list" sqref="F2:F${n+1}"><formula1>&quot;最高,高,中,低,最低&quot;</formula1></dataValidation>`,
+    `<dataValidation type="whole" operator="between" sqref="G2:G${n+1}"><formula1>0</formula1><formula2>100</formula2></dataValidation>`,
   ];
-  if (assigneeNames) {
-    dvItems.push(`<dataValidation type="list" sqref="H2:H${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="warning" error="請從清單中選擇成員" errorTitle="輸入提示"><formula1>"${assigneeNames}"</formula1></dataValidation>`);
-    dvItems.push(`<dataValidation type="list" sqref="I2:I${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="warning" error="請從清單中選擇成員或留空" errorTitle="輸入提示"><formula1>"無,${assigneeNames}"</formula1></dataValidation>`);
+  if (safeNames) {
+    dvItems.push(`<dataValidation type="list" sqref="H2:H${n+1}"><formula1>&quot;${xmlEsc(safeNames)}&quot;</formula1></dataValidation>`);
+    dvItems.push(`<dataValidation type="list" sqref="I2:I${n+1}"><formula1>&quot;,${xmlEsc(safeNames)}&quot;</formula1></dataValidation>`);
   }
   const dvXml = `<dataValidations count="${dvItems.length}">${dvItems.join('')}</dataValidations>`;
 
-  const fileName = `${S.currentProject.key}_${S.currentProject.name}.xlsx`;
   try {
+    if (typeof JSZip === 'undefined') throw new Error('JSZip not loaded');
     const wbBytes = XLSX.write(wb, { bookType:'xlsx', type:'array' });
     const zip = await JSZip.loadAsync(wbBytes);
     const sheetEntry = zip.file('xl/worksheets/sheet1.xml');
-    if (sheetEntry) {
-      const rawBytes = await sheetEntry.async('uint8array');
-      let xml = new TextDecoder('utf-8').decode(rawBytes);
-      xml = xml.replace('</worksheet>', dvXml + '</worksheet>');
-      zip.file('xl/worksheets/sheet1.xml', new TextEncoder().encode(xml));
+    if (!sheetEntry) throw new Error('sheet1.xml not found');
+    const rawBytes = await sheetEntry.async('uint8array');
+    let xml = new TextDecoder('utf-8').decode(rawBytes);
+    // Insert dataValidations right after </sheetData> — correct OOXML schema position
+    if (xml.includes('</sheetData>')) {
+      xml = xml.replace('</sheetData>', '</sheetData>' + dvXml);
     }
+    zip.file('xl/worksheets/sheet1.xml', new TextEncoder().encode(xml));
     const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3057,7 +3064,7 @@ async function exportProjectXlsx() {
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch(e) {
-    console.warn('dataValidation injection failed, exporting without dropdowns:', e);
+    console.warn('JSZip injection skipped:', e.message);
     XLSX.writeFile(wb, fileName);
   }
   toast('匯出成功', 'success');
