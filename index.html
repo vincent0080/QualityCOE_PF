@@ -6,6 +6,7 @@
 <title>Quality COE Project Flow</title>
 <script>!function(){var t=localStorage.getItem('pf_theme');if(t)document.documentElement.setAttribute('data-theme',t)}()</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -1653,7 +1654,7 @@ function renderBoard() {
   content.innerHTML = `<div class="board-wrap" id="board-wrap">${
     STATUSES.map(st=>{
       const colItems = S.items.filter(i=>i.status===st.key);
-      return `<div class="board-col" data-status="${st.key}" ondragover="ev.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropItem(event,'${st.key}')">
+      return `<div class="board-col" data-status="${st.key}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropItem(event,'${st.key}')">
         <div class="board-col-header">
           <span class="board-col-title">${t(st.label)}</span>
           <span class="board-col-count">${colItems.length}</span>
@@ -1946,8 +1947,31 @@ async function renderPanel() {
     <div class="panel-section">
       <div class="panel-section-title">${t('留言')}（${comments.length}）</div>
       ${comments.map(c=>{
-        const canEdit = c.authorId===S.user.uid || S.profile?.role==='admin';
+        const canEdit = !c.deleted && (c.authorId===S.user.uid || S.profile?.role==='admin');
+        const canDelete = !c.deleted && (c.authorId===S.user.uid || S.profile?.role==='admin');
         const edits = (c.edits||[]).slice().reverse();
+        const fmtEditedAt = v => {
+          if (!v) return '';
+          if (typeof v === 'string') return v.substring(0,16).replace('T',' ');
+          if (v && typeof v.toDate === 'function') return v.toDate().toISOString().substring(0,16).replace('T',' ');
+          return String(v).substring(0,16).replace('T',' ');
+        };
+        if (c.deleted) {
+          return `<div class="comment-item" id="ci-${c.id}" style="opacity:.65">
+            <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(getUserName(c.authorId))};flex-shrink:0">${initials(getUserName(c.authorId))}</div>
+            <div class="comment-content" style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                <span class="comment-author">${esc(getUserName(c.authorId))}</span>
+                <span class="comment-time">${formatTs(c.createdAt)}</span>
+              </div>
+              <div style="color:var(--txt2);font-style:italic">[${tPlain('此留言已刪除')}]</div>
+              ${edits.length?`<div class="changelog">
+                <div class="changelog-title">${t('修改記錄')}</div>
+                ${edits.map(e=>`<div class="changelog-entry"><span style="margin-right:8px;font-style:italic">${fmtEditedAt(e.editedAt)}</span>${e.action==='deleted'?`<span style="color:#de350b">[${tPlain('刪除')}] </span>`:''}${esc(e.content)}</div>`).join('')}
+              </div>`:''}
+            </div>
+          </div>`;
+        }
         return `<div class="comment-item" id="ci-${c.id}">
           <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:${avatarColor(getUserName(c.authorId))};flex-shrink:0">${initials(getUserName(c.authorId))}</div>
           <div class="comment-content" style="flex:1">
@@ -1955,9 +1979,9 @@ async function renderPanel() {
               <span class="comment-author">${esc(getUserName(c.authorId))}</span>
               <span class="comment-time">${formatTs(c.createdAt)}</span>
               ${c.editedAt?`<span class="comment-time">${t('已編輯')}</span>`:''}
-              ${canEdit?`<div class="comment-actions">
-                <button class="btn btn-ghost btn-sm" onclick="startEditComment('${c.id}')" title="編輯">✏️</button>
-                <button class="btn btn-ghost btn-sm" onclick="deleteComment('${c.id}')" title="刪除">🗑</button>
+              ${canEdit||canDelete?`<div class="comment-actions">
+                ${canEdit?`<button class="btn btn-ghost btn-sm" onclick="startEditComment('${c.id}')" title="編輯">✏️</button>`:''}
+                ${canDelete?`<button class="btn btn-ghost btn-sm" onclick="deleteComment('${c.id}')" title="刪除">🗑</button>`:''}
               </div>`:''}
             </div>
             <div id="comment-text-${c.id}" class="comment-text">${esc(c.content)}</div>
@@ -1970,7 +1994,7 @@ async function renderPanel() {
             </div>
             ${edits.length?`<div class="changelog">
               <div class="changelog-title">${t('修改記錄')}</div>
-              ${edits.map(e=>`<div class="changelog-entry"><span style="margin-right:8px;font-style:italic">${(e.editedAt||'').substring(0,16).replace('T',' ')}</span>${esc(e.content)}</div>`).join('')}
+              ${edits.map(e=>`<div class="changelog-entry"><span style="margin-right:8px;font-style:italic">${fmtEditedAt(e.editedAt)}</span>${esc(e.content)}</div>`).join('')}
             </div>`:''}
           </div>
         </div>`;
@@ -2084,7 +2108,15 @@ async function saveEditComment(id) {
 }
 async function deleteComment(id) {
   if (!confirm(tPlain('確定要刪除這則留言？'))) return;
-  await db.collection('comments').doc(id).delete();
+  const snap = await db.collection('comments').doc(id).get();
+  const old = snap.data()?.content || '';
+  const now = new Date().toISOString();
+  await db.collection('comments').doc(id).update({
+    deleted: true,
+    deletedAt: now,
+    deletedBy: S.user.uid,
+    edits: FV.arrayUnion({ content: old, editedAt: now, action: 'deleted' })
+  });
   renderPanel();
 }
 
@@ -2917,7 +2949,7 @@ function handleImportXlsx(input) {
   reader.readAsArrayBuffer(file);
 }
 
-function exportProjectXlsx() {
+async function exportProjectXlsx() {
   if (!S.currentProject) { toast('請先選擇一個專案', 'error'); return; }
   if (!S.items.length) { toast('此專案沒有任務可匯出', 'error'); return; }
   const statusMap = { todo:'待處理', in_progress:'進行中', testing:'測試中', done:'完成' };
@@ -2941,37 +2973,12 @@ function exportProjectXlsx() {
   const n = rows.length;
 
   // Columns: A代號 B類型 C標題 D說明 E狀態 F優先度 G進度 H指派給 I協作成員 J截止日期 K建立時間 L更新時間
-  // ── Column widths ──
   ws['!cols'] = [
     {wch:12},{wch:8},{wch:30},{wch:40},{wch:10},{wch:8},
     {wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}
   ];
 
-  // ── Data validation (dropdowns) for editable columns ──
   const assigneeNames = Object.values(S.users).map(u=>u.name||'').filter(Boolean).join(',');
-  ws['!dataValidations'] = [
-    { sqref:`B2:B${n+1}`, type:'list', formula1:'"任務,錯誤,功能,問題"', showDropDown:false, showErrorAlert:true, errorStyle:'stop', error:'請從清單中選擇類型', errorTitle:'輸入錯誤' },
-    { sqref:`E2:E${n+1}`, type:'list', formula1:'"待處理,進行中,測試中,完成"', showDropDown:false, showErrorAlert:true, errorStyle:'stop', error:'請從清單中選擇狀態', errorTitle:'輸入錯誤' },
-    { sqref:`F2:F${n+1}`, type:'list', formula1:'"最高,高,中,低,最低"', showDropDown:false, showErrorAlert:true, errorStyle:'stop', error:'請從清單中選擇優先度', errorTitle:'輸入錯誤' },
-    { sqref:`G2:G${n+1}`, type:'whole', operator:'between', formula1:'0', formula2:'100', showErrorAlert:true, errorStyle:'stop', error:'請輸入 0–100 之間的整數', errorTitle:'輸入錯誤' },
-    ...(assigneeNames ? [
-      { sqref:`H2:H${n+1}`, type:'list', formula1:`"${assigneeNames}"`, showDropDown:false, showErrorAlert:true, errorStyle:'warning', error:'請從清單中選擇成員', errorTitle:'輸入提示' },
-      { sqref:`I2:I${n+1}`, type:'list', formula1:`"無,${assigneeNames}"`, showDropDown:false, showErrorAlert:true, errorStyle:'warning', error:'請從清單中選擇成員或留空', errorTitle:'輸入提示' },
-    ] : []),
-  ];
-
-  // ── Sheet protection: lock 代號 (col A=0) and 建立時間 (col K=10) ──
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({r, c});
-      if (!ws[addr]) ws[addr] = {t:'z'};
-      if (!ws[addr].s) ws[addr].s = {};
-      // Lock A (代號) and K (建立時間); unlock everything else
-      ws[addr].s.protection = { locked: (c === 0 || c === 10) };
-    }
-  }
-  ws['!protect'] = { password:'', selectLockedCells:true, selectUnlockedCells:true, formatCells:true, formatColumns:true, formatRows:true };
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, S.currentProject.name.substring(0,31));
@@ -2997,7 +3004,39 @@ function exportProjectXlsx() {
   wsInfo['!cols'] = [{wch:12},{wch:50}];
   XLSX.utils.book_append_sheet(wb, wsInfo, '參數說明');
 
-  XLSX.writeFile(wb, `${S.currentProject.key}_${S.currentProject.name}.xlsx`);
+  // ── Build OOXML dataValidations and inject via JSZip ──
+  const dvItems = [
+    `<dataValidation type="list" sqref="B2:B${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇類型" errorTitle="輸入錯誤"><formula1>"任務,錯誤,功能,問題"</formula1></dataValidation>`,
+    `<dataValidation type="list" sqref="E2:E${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇狀態" errorTitle="輸入錯誤"><formula1>"待處理,進行中,測試中,完成"</formula1></dataValidation>`,
+    `<dataValidation type="list" sqref="F2:F${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="stop" error="請從清單中選擇優先度" errorTitle="輸入錯誤"><formula1>"最高,高,中,低,最低"</formula1></dataValidation>`,
+    `<dataValidation type="whole" operator="between" sqref="G2:G${n+1}" showErrorAlert="1" errorStyle="stop" error="請輸入 0-100 之間的整數" errorTitle="輸入錯誤"><formula1>0</formula1><formula2>100</formula2></dataValidation>`,
+  ];
+  if (assigneeNames) {
+    dvItems.push(`<dataValidation type="list" sqref="H2:H${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="warning" error="請從清單中選擇成員" errorTitle="輸入提示"><formula1>"${assigneeNames}"</formula1></dataValidation>`);
+    dvItems.push(`<dataValidation type="list" sqref="I2:I${n+1}" showDropDown="0" showErrorAlert="1" errorStyle="warning" error="請從清單中選擇成員或留空" errorTitle="輸入提示"><formula1>"無,${assigneeNames}"</formula1></dataValidation>`);
+  }
+  const dvXml = `<dataValidations count="${dvItems.length}">${dvItems.join('')}</dataValidations>`;
+
+  const fileName = `${S.currentProject.key}_${S.currentProject.name}.xlsx`;
+  try {
+    const wbBytes = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    const zip = await JSZip.loadAsync(wbBytes);
+    const sheetEntry = zip.file('xl/worksheets/sheet1.xml');
+    if (sheetEntry) {
+      let xml = await sheetEntry.async('string');
+      xml = xml.replace('</worksheet>', dvXml + '</worksheet>');
+      zip.file('xl/worksheets/sheet1.xml', xml);
+    }
+    const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch(e) {
+    console.warn('dataValidation injection failed, exporting without dropdowns:', e);
+    XLSX.writeFile(wb, fileName);
+  }
   toast('匯出成功', 'success');
 }
 
