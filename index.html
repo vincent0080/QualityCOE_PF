@@ -1054,7 +1054,13 @@ function applyTheme(theme) {
 // SUBSCRIPTIONS
 // =============================================
 function subscribeProjects() {
-  const unsub = db.collection('projects').onSnapshot(snap => {
+  // 訂閱該成員有權限的專案（供首頁、側欄使用）
+  const isAdmin = S.profile?.role === 'admin';
+  const query = isAdmin
+    ? db.collection('projects')
+    : db.collection('projects').where('members', 'array-contains', S.user.uid);
+
+  const unsub = query.onSnapshot(snap => {
     S.projects = snap.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
     renderSidebarProjects();
@@ -1471,9 +1477,18 @@ function projectProgress(projectId) {
 // =============================================
 // PROJECTS LIST
 // =============================================
-function renderProjectsList() {
-  const active = S.projects.filter(p=>!p.archived);
-  const archived = S.projects.filter(p=>p.archived);
+async function renderProjectsList() {
+  document.getElementById('content').dataset.view='projects';
+  // 嘗試讀取所有專案（不限成員），回退到自身專案
+  let allProjects = S.projects;
+  try {
+    const snap = await db.collection('projects').get();
+    allProjects = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
+  } catch(e) {}
+  if (document.getElementById('content')?.dataset.view !== 'projects') return;
+  const active = allProjects.filter(p=>!p.archived);
+  const archived = allProjects.filter(p=>p.archived);
   const canAdmin = p => S.profile?.role==='admin'||p.createdBy===S.user.uid;
   const activeCard = p => `
     <div class="project-card" style="border-top-color:${p.color||'#0052cc'};cursor:pointer" onclick="showView('project','${p.id}')">
@@ -1523,7 +1538,6 @@ function renderProjectsList() {
         </div>
       </div>
     </div>`:''}`;
-  document.getElementById('content').dataset.view='projects';
 }
 
 // =============================================
