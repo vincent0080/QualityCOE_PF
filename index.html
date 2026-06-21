@@ -1054,13 +1054,7 @@ function applyTheme(theme) {
 // SUBSCRIPTIONS
 // =============================================
 function subscribeProjects() {
-  // 管理員看所有專案，一般成員只看自己參與的
-  const isAdmin = S.profile?.role === 'admin';
-  const query = isAdmin
-    ? db.collection('projects')
-    : db.collection('projects').where('members', 'array-contains', S.user.uid);
-
-  const unsub = query.onSnapshot(snap => {
+  const unsub = db.collection('projects').onSnapshot(snap => {
     S.projects = snap.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)));
     renderSidebarProjects();
@@ -1387,9 +1381,10 @@ async function renderHome() {
     } catch(e) {}
   }
   if (document.getElementById('content')?.dataset.view !== 'home') return;
+  const isMemberOf = p => S.profile?.role==='admin' || (p.members||[]).includes(S.user.uid);
   const myItems = S.items.filter(i=>(i.assignee===S.user.uid||i.assignee2===S.user.uid) && i.status!=='done').slice(0,8);
-  const recentProjects = S.projects.filter(p=>!p.archived).slice(0,6);
-  const archivedProjects = S.projects.filter(p=>p.archived);
+  const recentProjects = S.projects.filter(p=>!p.archived && isMemberOf(p)).slice(0,6);
+  const archivedProjects = S.projects.filter(p=>p.archived && isMemberOf(p));
 
   document.getElementById('content').innerHTML = `
     <div class="section-header"><h2>我的專案</h2><button class="btn btn-primary btn-sm" onclick="openCreateProjectModal()">+ 新增專案</button></div>
@@ -2697,7 +2692,7 @@ function renderSidebar() {
 
 function renderSidebarProjects() {
   const container = document.getElementById('sidebar-projects');
-  container.innerHTML = S.projects.filter(p=>!p.archived).slice(0,12).map(p=>`
+  container.innerHTML = S.projects.filter(p=>!p.archived && (S.profile?.role==='admin' || (p.members||[]).includes(S.user.uid))).slice(0,12).map(p=>`
     <div class="sidebar-item" data-pid="${p.id}" onclick="showView('project','${p.id}')">
       <div class="project-dot" style="background:${p.color||'#0052cc'}"></div>
       ${esc(p.name)}
