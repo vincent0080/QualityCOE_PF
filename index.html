@@ -3075,8 +3075,10 @@ async function exportProjectXlsx() {
         // Extract first <xf .../> inside <cellXfs> to clone its base attributes
         const cellXfsBody = sx.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/);
         const firstXf = cellXfsBody && cellXfsBody[1].match(/<xf([^>]*?)\/>/);
-        const baseAttrs = firstXf ? firstXf[1]
-          : ' numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"';
+        // Strip applyNumberFormat to match Excel's native unlocked-cell style format
+        const rawAttrs = firstXf ? firstXf[1]
+          : ' numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"';
+        const baseAttrs = rawAttrs.replace(/ applyNumberFormat="\d+"/, '');
         const unlockedXf = `<xf${baseAttrs} applyProtection="1"><protection locked="0"/></xf>`;
         // Increment count on <cellXfs> (using <cellXfs prefix to avoid matching <cellStyleXfs)
         sx = sx.replace(/(<cellXfs[^>]*count=)"(\d+)"/, (_, p, c) => `${p}"${parseInt(c)+1}"`);
@@ -3104,7 +3106,7 @@ async function exportProjectXlsx() {
     }
 
     // Insert sheetProtection (schema order: after sheetData, before dataValidations)
-    const protect = `<sheetProtection sheet="1" selectLockedCells="1" selectUnlockedCells="1"/>`;
+    const protect = `<sheetProtection sheet="1" objects="1" scenarios="1"/>`;
     if (xml.includes('</sheetData>')) {
       xml = xml.replace('</sheetData>', `</sheetData>${protect}${dvXml}`);
     }
