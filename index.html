@@ -3068,12 +3068,20 @@ async function exportProjectXlsx() {
     if (stylesEntry) {
       const sb = await stylesEntry.async('uint8array');
       let sx = new TextDecoder('utf-8').decode(sb);
-      const m = sx.match(/<cellXfs[^>]*\scount="(\d+)"/);
+      // Match <cellXfs count="N"> — NOT cellStyleXfs (different element)
+      const m = sx.match(/<cellXfs[^>]*count="(\d+)"/);
       if (m) {
         unlockedIdx = parseInt(m[1]);
-        sx = sx
-          .replace(/(<cellXfs[^>]*\s)count="\d+"/, `$1count="${unlockedIdx + 1}"`)
-          .replace('</cellXfs>', '<xf xfId="0" applyProtection="1"><protection locked="0"/></xf></cellXfs>');
+        // Extract first <xf .../> inside <cellXfs> to clone its base attributes
+        const cellXfsBody = sx.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/);
+        const firstXf = cellXfsBody && cellXfsBody[1].match(/<xf([^>]*?)\/>/);
+        const baseAttrs = firstXf ? firstXf[1]
+          : ' numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"';
+        const unlockedXf = `<xf${baseAttrs} applyProtection="1"><protection locked="0"/></xf>`;
+        // Increment count on <cellXfs> (using <cellXfs prefix to avoid matching <cellStyleXfs)
+        sx = sx.replace(/(<cellXfs[^>]*count=)"(\d+)"/, (_, p, c) => `${p}"${parseInt(c)+1}"`);
+        // Append the new xf before </cellXfs>
+        sx = sx.replace('</cellXfs>', unlockedXf + '</cellXfs>');
         zip.file('xl/styles.xml', new TextEncoder().encode(sx));
       }
     }
