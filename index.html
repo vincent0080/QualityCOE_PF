@@ -696,10 +696,11 @@ body[data-theme="dark"] .color-swatch.selected{border-color:#c9d1d9;box-shadow:0
       </div>
       <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
         <div style="font-size:13px;font-weight:600;color:var(--txt2);margin-bottom:10px">密碼管理</div>
-        <div class="form-group" style="margin-bottom:8px">
+        <div class="form-group" style="margin-bottom:8px" id="edit-member-newpw-group">
           <label>設定新密碼（留空則不修改）</label>
           <input type="password" id="edit-member-newpw" placeholder="至少 6 位">
         </div>
+        <div id="edit-member-reset-hint" style="display:none;font-size:12px;color:var(--txt2);margin-bottom:8px">無法直接代他人設定密碼（Firebase 限制），請改寄送重置信，請該成員自行設定新密碼。</div>
         <button class="btn btn-secondary btn-sm" onclick="sendMemberPasswordReset()" style="width:100%">寄送密碼重置信給此成員</button>
       </div>
     </div>
@@ -2484,6 +2485,9 @@ function openEditMember(uid, name, role) {
   document.getElementById('edit-member-name').value = name;
   document.getElementById('edit-member-role').value = role;
   document.getElementById('edit-member-newpw').value = '';
+  const isSelf = uid === S.user.uid;
+  document.getElementById('edit-member-newpw-group').style.display = isSelf ? '' : 'none';
+  document.getElementById('edit-member-reset-hint').style.display = isSelf ? 'none' : '';
   openModal('modal-edit-member');
 }
 
@@ -2497,25 +2501,10 @@ async function saveEditMember() {
   await db.collection('users').doc(uid).update({ name, role });
   if (S.users[uid]) { S.users[uid].name = name; S.users[uid].role = role; }
   if (uid === S.user.uid) { S.profile.name = name; S.profile.role = role; renderSidebar(); }
-  // 若有填寫新密碼且為自己，直接更新；若為他人，使用次要 App 實例
-  if (newpw) {
+  // 只能直接更新「自己」的密碼；他人密碼一律改用寄送重置信（Firebase 限制）
+  if (newpw && uid === S.user.uid) {
     try {
-      if (uid === S.user.uid) {
-        await auth.currentUser.updatePassword(newpw);
-      } else {
-        const userDoc = await db.collection('users').doc(uid).get();
-        const email = userDoc.data()?.email;
-        if (email) {
-          const tmpApp = firebase.initializeApp(firebaseConfig, 'pwreset_' + Date.now());
-          const tmpAuth = tmpApp.auth();
-          try {
-            await tmpAuth.sendPasswordResetEmail(email);
-            toast('密碼重置信已寄出（請請成員確認信箱）', 'success');
-          } finally {
-            await tmpApp.delete().catch(()=>{});
-          }
-        }
-      }
+      await auth.currentUser.updatePassword(newpw);
     } catch(e) {
       toast('密碼更新失敗：' + (e.code||e.message), 'error');
     }
