@@ -1560,6 +1560,8 @@ async function openProject(projectId) {
   if (sideEl) sideEl.classList.add('active');
 
   renderProjectTopbar();
+  await loadProjectUsers(projectId);
+  renderProjectContent();
 }
 
 function renderProjectTopbar() {
