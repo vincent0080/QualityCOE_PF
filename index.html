@@ -846,7 +846,8 @@ async function login() {
     }
     await auth.signInWithEmailAndPassword(email, pass);
   } catch(e) {
-    showAuthError(translateAuthError(e.code));
+    console.error('登入失敗', e);
+    showAuthError(`${translateAuthError(e.code)}（錯誤代碼：${e.code||e.message||'未知'}）`);
   }
 }
 
@@ -1688,10 +1689,10 @@ function renderBoard() {
           <span class="board-col-title">${t(st.label)}</span>
           <span class="board-col-count">${colItems.length}</span>
         </div>
+        <button class="add-card-btn" onclick="openCreateItemModal('${st.key}')">+ 建立</button>
         <div class="board-col-items" id="col-${st.key}">
           ${colItems.map(i=>boardCard(i)).join('')}
         </div>
-        <button class="add-card-btn" onclick="openCreateItemModal('${st.key}')">+ 建立</button>
       </div>`;
     }).join('')
   }</div>`;
@@ -2340,24 +2341,28 @@ async function saveProject() {
   if (!name||!key) { toast('請填寫名稱與代號', 'error'); return; }
   if (!/^[A-Z0-9]{1,6}$/.test(key)) { toast('代號限 1-6 個英數字元', 'error'); return; }
 
-  if (editId) {
-    // 編輯模式
-    await db.collection('projects').doc(editId).update({ name, description:desc, color });
-    closeModal('modal-project');
-    toast('專案已更新', 'success');
-    if (S.currentProject?.id === editId) renderProjectTopbar();
-  } else {
-    // 新增模式
-    const ref = await db.collection('projects').add({
-      name, key, description:desc, color,
-      members: [S.user.uid],
-      createdBy: S.user.uid,
-      counter: 0,
-      createdAt: FV.serverTimestamp()
-    });
-    closeModal('modal-project');
-    toast(`專案 ${key} 已建立`, 'success');
-    showView('project', ref.id);
+  try {
+    if (editId) {
+      // 編輯模式
+      await db.collection('projects').doc(editId).update({ name, description:desc, color });
+      closeModal('modal-project');
+      toast('專案已更新', 'success');
+      if (S.currentProject?.id === editId) renderProjectTopbar();
+    } else {
+      // 新增模式
+      const ref = await db.collection('projects').add({
+        name, key, description:desc, color,
+        members: [S.user.uid],
+        createdBy: S.user.uid,
+        counter: 0,
+        createdAt: FV.serverTimestamp()
+      });
+      closeModal('modal-project');
+      toast(`專案 ${key} 已建立`, 'success');
+      showView('project', ref.id);
+    }
+  } catch(e) {
+    toast('儲存失敗：' + (e.code||e.message), 'error');
   }
 }
 
